@@ -8,6 +8,8 @@ interface BlankPosition { index: number; char: string; userAnswer: string }
 interface PracticeWord { word: Word; blankPositions: BlankPosition[]; isCompleted: boolean; isCorrect: boolean | null }
 interface PracticeRecord { total: number; correct: number; date: string }
 
+const STORAGE_KEY = 'spelling_words'
+
 export default function Home() {
   const [words, setWords] = useState<Word[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,20 +30,22 @@ export default function Home() {
   const [addMode, setAddMode] = useState<'single' | 'batch'>('single')
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  const fetchWords = useCallback(async () => {
-    try {
-      const response = await fetch('/api/words')
-      const data = await response.json()
-      setWords(data)
-    } catch { toast.error('获取单词失败') }
-    finally { setIsLoading(false) }
-  }, [])
-
+  // 从本地存储加载单词
   useEffect(() => {
-    fetchWords()
+    const savedWords = localStorage.getItem(STORAGE_KEY)
+    if (savedWords) {
+      setWords(JSON.parse(savedWords))
+    }
     const savedHistory = localStorage.getItem('practiceHistory')
     if (savedHistory) setPracticeHistory(JSON.parse(savedHistory))
-  }, [fetchWords])
+    setIsLoading(false)
+  }, [])
+
+  // 保存单词到本地存储
+  const saveWords = (newWords: Word[]) => {
+    setWords(newWords)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newWords))
+  }
 
   const saveHistory = (total: number, correct: number) => {
     const newHistory = [{ total, correct, date: new Date().toISOString() }, ...practiceHistory].slice(0, 10)
@@ -51,21 +55,23 @@ export default function Home() {
 
   const handleAddWord = async () => {
     if (!newEnglish.trim() || !newChinese.trim()) { toast.error('请填写完整'); return }
-    setIsAdding(true)
-    try {
-      const response = await fetch('/api/words', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ english: newEnglish.trim(), chinese: newChinese.trim() })
-      })
-      const data = await response.json()
-      if (response.ok) {
-        setWords([data, ...words])
-        setNewEnglish(''); setNewChinese('')
-        toast.success('添加成功！')
-      } else toast.error(data.error || '添加失败')
-    } catch { toast.error('添加失败') }
-    finally { setIsAdding(false) }
+    
+    // 检查是否已存在
+    if (words.some(w => w.english.toLowerCase() === newEnglish.trim().toLowerCase())) {
+      toast.error('该单词已存在')
+      return
+    }
+
+    const newWord: Word = {
+      id: Date.now().toString(),
+      english: newEnglish.trim(),
+      chinese: newChinese.trim()
+    }
+    
+    saveWords([newWord, ...words])
+    setNewEnglish('')
+    setNewChinese('')
+    toast.success('添加成功！')
   }
 
   const parseBatchText = (text: string): Array<{english: string, chinese: string}> => {
@@ -75,27 +81,19 @@ export default function Home() {
     for (const line of lines) {
       let parts: string[] = []
       
-      if (line.includes(' - ')) {
-        parts = line.split(' - ')
-      } else if (line.includes('：')) {
-        parts = line.split('：')
-      } else if (line.includes(':')) {
-        parts = line.split(':')
-      } else if (line.includes('\t')) {
-        parts = line.split('\t')
-      } else {
+      if (line.includes(' - ')) parts = line.split(' - ')
+      else if (line.includes('：')) parts = line.split('：')
+      else if (line.includes(':')) parts = line.split(':')
+      else if (line.includes('\t')) parts = line.split('\t')
+      else {
         const spaceParts = line.trim().split(/\s+/)
-        if (spaceParts.length >= 2) {
-          parts = [spaceParts[0], spaceParts.slice(1).join(' ')]
-        }
+        if (spaceParts.length >= 2) parts = [spaceParts[0], spaceParts.slice(1).join(' ')]
       }
       
       if (parts.length >= 2) {
         const english = parts[0].trim()
         const chinese = parts.slice(1).join(' ').trim()
-        if (english && chinese) {
-          result.push({ english, chinese })
-        }
+        if (english && chinese) result.push({ english, chinese })
       }
     }
     return result
@@ -107,38 +105,38 @@ export default function Home() {
     const wordList = parseBatchText(batchText)
     if (wordList.length === 0) { toast.error('未能识别有效单词，请检查格式'); return }
     
-    setIsBatchAdding(true)
     let successCount = 0
     let failCount = 0
+    const newWords: Word[] = []
     
     for (const word of wordList) {
-      try {
-        const response = await fetch('/api/words', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ english: word.english, chinese: word.chinese })
+      if (!words.some(w => w.english.toLowerCase() === word.english.toLowerCase())) {
+        newWords.push({
+          id: Date.now().toString() + Math.random(),
+          english: word.english,
+          chinese: word.chinese
         })
-        if (response.ok) successCount++
-        else failCount++
-      } catch { failCount++ }
+        successCount++
+      } else {
+        failCount++
+      }
     }
     
-    await fetchWords()
+    if (newWords.length > 0) {
+      saveWords([...newWords, ...words])
+    }
     setBatchText('')
-    setIsBatchAdding(false)
     
     if (successCount > 0) {
-      toast.success(`成功添加 ${successCount} 个单词${failCount > 0 ? `，${failCount} 个已存在或失败` : ''}`)
+      toast.success(`成功添加 ${successCount} 个单词${failCount > 0 ? `，${failCount} 个已存在` : ''}`)
     } else {
-      toast.error('添加失败，单词可能已存在')
+      toast.error('所有单词都已存在')
     }
   }
 
-  const handleDeleteWord = async (id: string) => {
-    try {
-      const response = await fetch(`/api/words?id=${id}`, { method: 'DELETE' })
-      if (response.ok) { setWords(words.filter(w => w.id !== id)); toast.success('删除成功') }
-    } catch { toast.error('删除失败') }
+  const handleDeleteWord = (id: string) => {
+    saveWords(words.filter(w => w.id !== id))
+    toast.success('删除成功')
   }
 
   const generateBlanks = (word: string): BlankPosition[] => {
@@ -348,20 +346,15 @@ export default function Home() {
               <>
                 <div style={{ marginBottom: '16px' }}><label style={{ display: 'block', marginBottom: '4px', color: '#64748b', fontSize: '14px' }}>英文单词</label><input type="text" placeholder="例如：apple 或 China" value={newEnglish} onChange={(e) => setNewEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
                 <div style={{ marginBottom: '16px' }}><label style={{ display: 'block', marginBottom: '4px', color: '#64748b', fontSize: '14px' }}>中文释义</label><input type="text" placeholder="例如：苹果" value={newChinese} onChange={(e) => setNewChinese(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
-                <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}>{isAdding ? '添加中...' : '➕ 添加单词'}</button>
+                <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}>➕ 添加单词</button>
               </>
             ) : (
               <>
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', marginBottom: '4px', color: '#64748b', fontSize: '14px' }}>粘贴单词列表（每行一个）</label>
-                  <textarea 
-                    placeholder={`示例格式：\napple 苹果\nbanana 香蕉\nChina 中国\n\n输入什么格式就保存什么格式`}
-                    value={batchText}
-                    onChange={(e) => setBatchText(e.target.value)}
-                    style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', minHeight: '150px', resize: 'vertical' }}
-                  />
+                  <textarea placeholder="示例：\napple 苹果\nbanana 香蕉\nChina 中国" value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', minHeight: '150px', resize: 'vertical' }} />
                 </div>
-                <button onClick={handleBatchAdd} disabled={isBatchAdding} style={{ width: '100%', padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}>{isBatchAdding ? '添加中...' : '📝 批量添加'}</button>
+                <button onClick={handleBatchAdd} disabled={isBatchAdding} style={{ width: '100%', padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}>📝 批量添加</button>
               </>
             )}
           </div>
