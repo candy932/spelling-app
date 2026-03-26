@@ -38,6 +38,12 @@ export default function Home() {
   const [isAdding, setIsAdding] = useState(false)
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list')
   const [addMode, setAddMode] = useState<'single' | 'batch'>('single')
+  
+  // 编辑状态
+  const [editingWord, setEditingWord] = useState<Word | null>(null)
+  const [editEnglish, setEditEnglish] = useState('')
+  const [editChinese, setEditChinese] = useState('')
+  
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([])
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
   const [isPracticeMode, setIsPracticeMode] = useState(false)
@@ -86,7 +92,7 @@ export default function Home() {
     }
     setIsAdding(true)
     try {
-      const exists = words.some(w => w.english.toLowerCase() === newEnglish.trim().toLowerCase())
+      const exists = words.some(w => w.english.toLowerCase() === newEnglish.trim().toLowerCase() && w.id !== (editingWord?.id || ''))
       if (exists) {
         alert('该单词已存在')
         setIsAdding(false)
@@ -94,7 +100,7 @@ export default function Home() {
       }
       const newWord: Word = {
         id: Date.now().toString(),
-        english: newEnglish.trim().toLowerCase(),
+        english: newEnglish.trim(),
         chinese: newChinese.trim(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -111,6 +117,54 @@ export default function Home() {
     }
   }
 
+  // 开始编辑单词
+  const startEdit = (word: Word) => {
+    setEditingWord(word)
+    setEditEnglish(word.english)
+    setEditChinese(word.chinese)
+  }
+
+  // 取消编辑
+  const cancelEdit = () => {
+    setEditingWord(null)
+    setEditEnglish('')
+    setEditChinese('')
+  }
+
+  // 保存编辑
+  const saveEdit = () => {
+    if (!editEnglish.trim() || !editChinese.trim()) {
+      alert('请填写完整的单词信息')
+      return
+    }
+    
+    const exists = words.some(w => 
+      w.english.toLowerCase() === editEnglish.trim().toLowerCase() && w.id !== editingWord?.id
+    )
+    if (exists) {
+      alert('该单词已存在')
+      return
+    }
+    
+    const newWords = words.map(w => {
+      if (w.id === editingWord?.id) {
+        return {
+          ...w,
+          english: editEnglish.trim(),
+          chinese: editChinese.trim(),
+          updatedAt: new Date().toISOString()
+        }
+      }
+      return w
+    })
+    
+    saveWords(newWords)
+    setEditingWord(null)
+    setEditEnglish('')
+    setEditChinese('')
+    alert('修改成功！')
+  }
+
   // 批量添加单词 - 解析文本
   const handleBatchAdd = () => {
     if (!batchText.trim()) {
@@ -124,13 +178,6 @@ export default function Home() {
     for (const line of lines) {
       const trimmedLine = line.trim()
       if (!trimmedLine) continue
-
-      // 支持多种格式：
-      // 1. apple 苹果
-      // 2. apple  苹果 (多个空格)
-      // 3. apple	苹果 (tab分隔)
-      // 4. apple,苹果 (逗号分隔)
-      // 5. apple：苹果 (冒号分隔)
       
       let parts: string[] = []
       
@@ -145,7 +192,6 @@ export default function Home() {
       } else if (trimmedLine.includes(':')) {
         parts = trimmedLine.split(':')
       } else {
-        // 用空格分隔，取第一部分为英文，其余为中文
         parts = trimmedLine.split(/\s+/)
       }
 
@@ -175,7 +221,7 @@ export default function Home() {
       }
       const newWord: Word = {
         id: Date.now().toString() + Math.random(),
-        english: word.english.toLowerCase().trim(),
+        english: word.english.trim(),
         chinese: word.chinese.trim(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -235,7 +281,7 @@ export default function Home() {
       const blankCount = currentPractice.blankPositions.length
       if (/^[a-zA-Z]$/.test(e.key)) {
         const newBlankPositions = [...currentPractice.blankPositions]
-        newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: e.key.toLowerCase() }
+        newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: e.key }
         const newPracticeWords = [...practiceWords]
         newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
         setPracticeWords(newPracticeWords)
@@ -324,11 +370,11 @@ export default function Home() {
                       ? { borderColor: '#f43f5e', background: 'linear-gradient(to bottom, #ffe4e6, #fecdd3)', color: '#be123c', boxShadow: '0 10px 25px -3px rgba(244, 63, 94, 0.5)', transform: 'scale(1.05)' }
                       : { borderColor: '#a78bfa', background: 'linear-gradient(to bottom, #f5f3ff, #ffffff)', color: '#6d28d9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' })
                 }}>
-                  {blankPos.userAnswer.toUpperCase()}
+                  {blankPos.userAnswer}
                 </div>
                 {isCompleted && !isAnswerCorrect && (
                   <span style={{ fontSize: '12px', color: '#059669', fontWeight: 'bold', marginTop: '6px', background: '#d1fae5', padding: '2px 8px', borderRadius: '9999px' }}>
-                    {blankPos.char.toUpperCase()}
+                    {blankPos.char}
                   </span>
                 )}
               </div>
@@ -336,7 +382,7 @@ export default function Home() {
           }
           return (
             <div key={index} style={{ width: '40px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: 'bold', color: '#475569', background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9)', borderRadius: '12px', border: '2px solid #e2e8f0' }}>
-              {char.toUpperCase()}
+              {char}
             </div>
           )
         })}
@@ -352,6 +398,52 @@ export default function Home() {
     if (accuracy >= 80) return { text: '非常优秀！', emoji: '🌟' }
     if (accuracy >= 60) return { text: '继续加油！', emoji: '💪' }
     return { text: '再接再厉！', emoji: '🎯' }
+  }
+
+  // 编辑弹窗
+  if (editingWord) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+        <div style={{ width: '100%', maxWidth: '400px', background: 'white', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden' }}>
+          <div style={{ height: '4px', background: 'linear-gradient(to right, #f59e0b, #f97316)' }} />
+          <div style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>✏️ 编辑单词</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>英文单词</label>
+                <input
+                  type="text"
+                  value={editEnglish}
+                  onChange={(e) => setEditEnglish(e.target.value)}
+                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>中文释义</label>
+                <input
+                  value={editEnglish}
+                  onChange={(e) => setEditEnglish(e.target.value)}
+                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>中文释义</label>
+                <input
+                  type="text"
+                  value={editChinese}
+                  onChange={(e) => setEditChinese(e.target.value)}
+                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button onClick={cancelEdit} style={{ flex: 1, height: '48px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>取消</button>
+                <button onClick={saveEdit} style={{ flex: 1, height: '48px', background: 'linear-gradient(to right, #f59e0b, #f97316)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (showResult) {
@@ -408,7 +500,7 @@ export default function Home() {
               {renderBlankedWord(currentPractice)}
               {showAnswer && (
                 <div style={{ textAlign: 'center', padding: '16px', borderRadius: '16px', marginBottom: '16px', background: currentPractice.isCorrect ? '#d1fae5' : '#ffe4e6', border: `2px solid ${currentPractice.isCorrect ? '#34d399' : '#fb7185'}` }}>
-                  {currentPractice.isCorrect ? <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#047857' }}>✓ 正确！🏆</span> : <div><span style={{ fontWeight: 'bold', color: '#be123c' }}>✕ 再接再厉！</span><div style={{ marginTop: '8px', fontSize: '14px' }}>正确答案：<strong>{currentPractice.word.english.toUpperCase()}</strong></div></div>}
+                  {currentPractice.isCorrect ? <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#047857' }}>✓ 正确！🏆</span> : <div><span style={{ fontWeight: 'bold', color: '#be123c' }}>✕ 再接再厉！</span><div style={{ marginTop: '8px', fontSize: '14px' }}>正确答案：<strong>{currentPractice.word.english}</strong></div></div>}
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -476,8 +568,14 @@ export default function Home() {
               <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {words.map((word) => (
                   <div key={word.id} style={{ background: 'white', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                    <div><div style={{ fontWeight: 'bold', fontSize: '16px' }}>{word.english.toUpperCase()}</div><div style={{ color: '#64748b', fontSize: '14px' }}>{word.chinese}</div></div>
-                    <button onClick={() => handleDeleteWord(word.id)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>🗑️</button>
+                    <div onClick={() => startEdit(word)} style={{ flex: 1, cursor: 'pointer' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '16px' }}>{word.english}</div>
+                      <div style={{ color: '#64748b', fontSize: '14px' }}>{word.chinese}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => startEdit(word)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>✏️</button>
+                      <button onClick={() => handleDeleteWord(word.id)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>🗑️</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -487,7 +585,6 @@ export default function Home() {
 
         {activeTab === 'add' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* 模式切换 */}
             <div style={{ display: 'flex', gap: '4px', background: '#f0fdf4', padding: '4px', borderRadius: '12px' }}>
               <button onClick={() => setAddMode('single')} style={{ flex: 1, padding: '10px', background: addMode === 'single' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'single' ? '#059669' : '#64748b', boxShadow: addMode === 'single' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>单个添加</button>
               <button onClick={() => setAddMode('batch')} style={{ flex: 1, padding: '10px', background: addMode === 'batch' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'batch' ? '#059669' : '#64748b', boxShadow: addMode === 'batch' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>批量添加</button>
@@ -549,6 +646,7 @@ export default function Home() {
             <p>2️⃣ 点击「开始听写」开始练习</p>
             <p>3️⃣ 点击格子选中，输入字母填入</p>
             <p>4️⃣ 按退格键删除，方向键切换格子</p>
+            <p>5️⃣ 点击单词可以编辑修改</p>
           </div>
         </div>
       </main>
