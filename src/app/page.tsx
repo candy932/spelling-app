@@ -415,14 +415,6 @@ export default function Home() {
                   type="text"
                   value={editEnglish}
                   onChange={(e) => setEditEnglish(e.target.value)}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>中文释义</label>
-                <input
-                  value={editEnglish}
-                  onChange={(e) => setEditEnglish(e.target.value)}
                   style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }}
                 />
               </div>
