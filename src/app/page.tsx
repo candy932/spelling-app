@@ -34,10 +34,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true)
   const [newEnglish, setNewEnglish] = useState('')
   const [newChinese, setNewChinese] = useState('')
+  const [batchText, setBatchText] = useState('')
   const [isAdding, setIsAdding] = useState(false)
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list')
-  const [isRecognizing, setIsRecognizing] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [addMode, setAddMode] = useState<'single' | 'batch'>('single')
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([])
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
   const [isPracticeMode, setIsPracticeMode] = useState(false)
@@ -48,6 +48,7 @@ export default function Home() {
   const [practiceHistory, setPracticeHistory] = useState<PracticeRecord[]>([])
   const [focusedBlankIndex, setFocusedBlankIndex] = useState<number>(0)
   const addInputRef = useRef<HTMLInputElement>(null)
+  const batchInputRef = useRef<HTMLTextAreaElement>(null)
 
   const loadWords = useCallback(() => {
     try {
@@ -110,13 +111,68 @@ export default function Home() {
     }
   }
 
-  const handleBatchAddWords = (wordList: Array<{english: string, chinese: string}>) => {
+  // 批量添加单词 - 解析文本
+  const handleBatchAdd = () => {
+    if (!batchText.trim()) {
+      alert('请输入单词内容')
+      return
+    }
+
+    const lines = batchText.trim().split('\n')
+    const wordList: Array<{english: string, chinese: string}> = []
+
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+      if (!trimmedLine) continue
+
+      // 支持多种格式：
+      // 1. apple 苹果
+      // 2. apple  苹果 (多个空格)
+      // 3. apple	苹果 (tab分隔)
+      // 4. apple,苹果 (逗号分隔)
+      // 5. apple：苹果 (冒号分隔)
+      
+      let parts: string[] = []
+      
+      if (trimmedLine.includes('\t')) {
+        parts = trimmedLine.split('\t')
+      } else if (trimmedLine.includes('，')) {
+        parts = trimmedLine.split('，')
+      } else if (trimmedLine.includes(',')) {
+        parts = trimmedLine.split(',')
+      } else if (trimmedLine.includes('：')) {
+        parts = trimmedLine.split('：')
+      } else if (trimmedLine.includes(':')) {
+        parts = trimmedLine.split(':')
+      } else {
+        // 用空格分隔，取第一部分为英文，其余为中文
+        parts = trimmedLine.split(/\s+/)
+      }
+
+      if (parts.length >= 2) {
+        const english = parts[0].trim()
+        const chinese = parts.slice(1).join(' ').trim()
+        if (english && chinese) {
+          wordList.push({ english, chinese })
+        }
+      }
+    }
+
+    if (wordList.length === 0) {
+      alert('未能识别到有效的单词格式\n\n格式示例：\napple 苹果\nbanana 香蕉')
+      return
+    }
+
     let successCount = 0
     let failCount = 0
     const newWords = [...words]
+
     for (const word of wordList) {
       const exists = newWords.some(w => w.english.toLowerCase() === word.english.toLowerCase().trim())
-      if (exists) { failCount++; continue }
+      if (exists) {
+        failCount++
+        continue
+      }
       const newWord: Word = {
         id: Date.now().toString() + Math.random(),
         english: word.english.toLowerCase().trim(),
@@ -127,34 +183,21 @@ export default function Home() {
       newWords.unshift(newWord)
       successCount++
     }
-    saveWords(newWords)
-    if (successCount > 0) alert(`成功添加 ${successCount} 个单词${failCount > 0 ? `，${failCount} 个已存在或失败` : ''}`)
-    else alert('添加失败，单词可能已存在')
-  }
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) { alert('请上传图片文件'); return }
-    if (file.size > 5 * 1024 * 1024) { alert('图片大小不能超过5MB'); return }
-    setIsRecognizing(true)
-    try {
-      const formData = new FormData()
-      formData.append('image', file)
-      const response = await fetch('/api/ocr', { method: 'POST', body: formData })
-      const data = await response.json()
-      if (response.ok && data.success && data.words.length > 0) handleBatchAddWords(data.words)
-      else alert(data.error || '识别失败')
-    } catch (error) {
-      alert('图片识别失败，请重试')
-    } finally {
-      setIsRecognizing(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    saveWords(newWords)
+    setBatchText('')
+    
+    if (successCount > 0) {
+      alert(`成功添加 ${successCount} 个单词${failCount > 0 ? `\n${failCount} 个已存在或跳过` : ''}`)
+    } else {
+      alert('添加失败，所有单词可能都已存在')
     }
   }
 
   const handleDeleteWord = (id: string) => {
-    if (confirm('确定要删除这个单词吗？')) saveWords(words.filter(w => w.id !== id))
+    if (confirm('确定要删除这个单词吗？')) {
+      saveWords(words.filter(w => w.id !== id))
+    }
   }
 
   const generateBlanks = (word: string): BlankPosition[] => {
@@ -168,7 +211,10 @@ export default function Home() {
   }
 
   const startPractice = () => {
-    if (words.length === 0) { alert('请先添加单词'); return }
+    if (words.length === 0) {
+      alert('请先添加单词')
+      return
+    }
     const shuffledWords = [...words].sort(() => Math.random() - 0.5).slice(0, 10)
     const practiceData = shuffledWords.map(word => ({ word, blankPositions: generateBlanks(word.english), isCompleted: false, isCorrect: null }))
     setPracticeWords(practiceData)
@@ -394,6 +440,7 @@ export default function Home() {
           <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>共 {words.length} 词</span>
         </div>
       </header>
+
       <main style={{ maxWidth: '400px', margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {practiceHistory.length > 0 && (
           <div style={{ background: 'linear-gradient(to right, #fffbeb, #fef3c7)', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -401,6 +448,7 @@ export default function Home() {
             <div style={{ textAlign: 'right' }}><div style={{ fontSize: '18px', fontWeight: 'bold', color: '#b45309' }}>{practiceHistory[0].correct} / {practiceHistory[0].total}</div><div style={{ fontSize: '12px', color: '#a16207' }}>正确率 {Math.round((practiceHistory[0].correct / practiceHistory[0].total) * 100)}%</div></div>
           </div>
         )}
+
         <div style={{ background: 'white', borderRadius: '20px', boxShadow: '0 20px 40px -12px rgba(0, 0, 0, 0.2)', overflow: 'hidden' }}>
           <div style={{ height: '4px', background: 'linear-gradient(to right, #8b5cf6, #a855f7, #d946ef)' }} />
           <div style={{ padding: '32px', textAlign: 'center' }}>
@@ -410,14 +458,20 @@ export default function Home() {
             <button onClick={startPractice} disabled={words.length === 0} style={{ width: '100%', height: '56px', fontSize: '16px', background: words.length === 0 ? '#e2e8f0' : 'linear-gradient(to right, #8b5cf6, #a855f7, #d946ef)', color: words.length === 0 ? '#94a3b8' : 'white', border: 'none', borderRadius: '12px', cursor: words.length === 0 ? 'not-allowed' : 'pointer', fontWeight: '600' }}>✨ 开始听写</button>
           </div>
         </div>
+
         <div style={{ display: 'flex', gap: '4px', background: '#f3e8ff', padding: '4px', borderRadius: '12px' }}>
           <button onClick={() => setActiveTab('list')} style={{ flex: 1, padding: '12px', background: activeTab === 'list' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'list' ? '#7c3aed' : '#64748b' }}>📋 单词列表</button>
           <button onClick={() => setActiveTab('add')} style={{ flex: 1, padding: '12px', background: activeTab === 'add' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'add' ? '#7c3aed' : '#64748b' }}>➕ 添加单词</button>
         </div>
+
         {activeTab === 'list' && (
           <div>
             {isLoading ? <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>加载中...</div> : words.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px', background: 'white', borderRadius: '12px', border: '2px dashed #c4b5fd' }}><div style={{ fontSize: '32px', marginBottom: '12px' }}>📖</div><p style={{ fontWeight: '600' }}>暂无单词</p><p style={{ fontSize: '14px', color: '#94a3b8' }}>点击「添加单词」开始添加</p></div>
+              <div style={{ textAlign: 'center', padding: '48px', background: 'white', borderRadius: '12px', border: '2px dashed #c4b5fd' }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📖</div>
+                <p style={{ fontWeight: '600' }}>暂无单词</p>
+                <p style={{ fontSize: '14px', color: '#94a3b8' }}>点击「添加单词」开始添加</p>
+              </div>
             ) : (
               <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {words.map((word) => (
@@ -430,35 +484,68 @@ export default function Home() {
             )}
           </div>
         )}
+
         {activeTab === 'add' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-              <div style={{ height: '4px', background: 'linear-gradient(to right, #60a5fa, #22d3ee)' }} />
-              <div style={{ padding: '16px' }}>
-                <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>📷 图片识别</h3>
-                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px' }}>上传单词截图，自动识别添加</p>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
-                <button onClick={() => fileInputRef.current?.click()} disabled={isRecognizing} style={{ width: '100%', height: '60px', background: '#f0f9ff', border: '2px dashed #93c5fd', borderRadius: '12px', cursor: 'pointer', color: '#2563eb' }}>{isRecognizing ? '🔄 识别中...' : '📤 点击上传图片'}</button>
-              </div>
+            {/* 模式切换 */}
+            <div style={{ display: 'flex', gap: '4px', background: '#f0fdf4', padding: '4px', borderRadius: '12px' }}>
+              <button onClick={() => setAddMode('single')} style={{ flex: 1, padding: '10px', background: addMode === 'single' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'single' ? '#059669' : '#64748b', boxShadow: addMode === 'single' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>单个添加</button>
+              <button onClick={() => setAddMode('batch')} style={{ flex: 1, padding: '10px', background: addMode === 'batch' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'batch' ? '#059669' : '#64748b', boxShadow: addMode === 'batch' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>批量添加</button>
             </div>
-            <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-              <div style={{ height: '4px', background: 'linear-gradient(to right, #34d399, #2dd4bf)' }} />
-              <div style={{ padding: '16px' }}>
-                <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>➕ 手动添加</h3>
-                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px' }}>输入英文单词和中文释义</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <input ref={addInputRef} type="text" placeholder="英文单词，例如：apple" value={newEnglish} onChange={(e) => setNewEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
-                  <input type="text" placeholder="中文释义，例如：苹果" value={newChinese} onChange={(e) => setNewChinese(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddWord()} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
-                  <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{isAdding ? '添加中...' : '➕ 添加单词'}</button>
+
+            {addMode === 'single' ? (
+              <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ height: '4px', background: 'linear-gradient(to right, #34d399, #2dd4bf)' }} />
+                <div style={{ padding: '16px' }}>
+                  <h3 style={{ fontWeight: '600', marginBottom: '12px' }}>➕ 手动添加</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <input ref={addInputRef} type="text" placeholder="英文单词，例如：apple" value={newEnglish} onChange={(e) => setNewEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="中文释义，例如：苹果" value={newChinese} onChange={(e) => setNewChinese(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddWord()} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
+                    <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{isAdding ? '添加中...' : '➕ 添加单词'}</button>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ height: '4px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)' }} />
+                <div style={{ padding: '16px' }}>
+                  <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>📝 批量添加</h3>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>每行一个单词，格式：英文 中文</p>
+                  <textarea
+                    ref={batchInputRef}
+                    placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子"
+                    value={batchText}
+                    onChange={(e) => setBatchText(e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '150px',
+                      padding: '12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      lineHeight: '1.6'
+                    }}
+                  />
+                  <button onClick={handleBatchAdd} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', marginTop: '12px' }}>📥 批量添加</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '12px', fontSize: '13px', color: '#166534' }}>
+              <strong>格式说明：</strong><br/>
+              每行一个单词，英文和中文用空格、逗号或冒号分隔<br/>
+              例如：apple 苹果 或 apple,苹果
             </div>
           </div>
         )}
+
         <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '16px' }}>
           <h3 style={{ fontWeight: '600', marginBottom: '12px' }}>✨ 使用说明</h3>
           <div style={{ fontSize: '14px', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <p>1️⃣ 在「添加单词」上传图片或手动添加单词</p>
+            <p>1️⃣ 在「添加单词」批量粘贴单词</p>
             <p>2️⃣ 点击「开始听写」开始练习</p>
             <p>3️⃣ 点击格子选中，输入字母填入</p>
             <p>4️⃣ 按退格键删除，方向键切换格子</p>
