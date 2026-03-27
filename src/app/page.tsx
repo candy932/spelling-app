@@ -57,6 +57,7 @@ export default function Home() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
+  const focusedBlankIndexRef = useRef<number>(0)
 
   const loadWords = useCallback(() => {
     try {
@@ -272,6 +273,7 @@ export default function Home() {
     setCorrectCount(0)
     setTotalCount(practiceData.length)
     setShowResult(false)
+    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
     // 延迟聚焦，确保 DOM 已渲染
     setTimeout(() => focusHiddenInput(), 100)
@@ -295,15 +297,17 @@ export default function Home() {
     // 只接受字母
     if (/^[a-zA-Z]$/.test(lastChar)) {
       const currentPractice = practiceWords[currentWordIndex]
+      const currentIndex = focusedBlankIndexRef.current  // 使用 ref 获取最新值
       if (currentPractice && currentPractice.blankPositions.length > 0) {
         const blankCount = currentPractice.blankPositions.length
         const newBlankPositions = [...currentPractice.blankPositions]
-        newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: lastChar }
+        newBlankPositions[currentIndex] = { ...newBlankPositions[currentIndex], userAnswer: lastChar }
         const newPracticeWords = [...practiceWords]
         newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
         setPracticeWords(newPracticeWords)
-        if (focusedBlankIndex < blankCount - 1) {
-          setFocusedBlankIndex(focusedBlankIndex + 1)
+        if (currentIndex < blankCount - 1) {
+          focusedBlankIndexRef.current = currentIndex + 1
+          setFocusedBlankIndex(currentIndex + 1)
         }
       }
     }
@@ -375,6 +379,7 @@ export default function Home() {
     if (currentWordIndex < practiceWords.length - 1) {
       setCurrentWordIndex(prev => prev + 1)
       setShowAnswer(false)
+      focusedBlankIndexRef.current = 0
       setFocusedBlankIndex(0)
     } else {
       saveHistory(totalCount, correctCount)
@@ -388,6 +393,7 @@ export default function Home() {
     newPracticeWords[currentWordIndex] = { ...newPracticeWords[currentWordIndex], blankPositions: generateBlanks(newPracticeWords[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
     setPracticeWords(newPracticeWords)
     setShowAnswer(false)
+    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
     setTimeout(() => focusHiddenInput(), 100)
   }
@@ -406,7 +412,7 @@ export default function Home() {
             const isFocused = currentBlankIndex === focusedBlankIndex && !isCompleted
             return (
               <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div onClick={() => { if (!isCompleted) { setFocusedBlankIndex(currentBlankIndex); focusHiddenInput() } }} style={{
+                <div onClick={() => { if (!isCompleted) { focusedBlankIndexRef.current = currentBlankIndex; setFocusedBlankIndex(currentBlankIndex); focusHiddenInput() } }} style={{
                   width: '40px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '22px', fontWeight: 'bold', borderRadius: '12px', border: '2px solid',
                   cursor: isCompleted ? 'default' : 'pointer', userSelect: 'none', transition: 'all 0.2s',
