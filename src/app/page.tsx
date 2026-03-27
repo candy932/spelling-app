@@ -525,7 +525,7 @@ export default function Home() {
         <input
           ref={hiddenInputRef}
           type="text"
-          inputMode="latin"
+          inputMode="text"
           pattern="[a-zA-Z]*"
           autoCapitalize="off"
           autoCorrect="off"
