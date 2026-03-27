@@ -53,8 +53,10 @@ export default function Home() {
   const [showResult, setShowResult] = useState(false)
   const [practiceHistory, setPracticeHistory] = useState<PracticeRecord[]>([])
   const [focusedBlankIndex, setFocusedBlankIndex] = useState<number>(0)
+  const [hiddenInputValue, setHiddenInputValue] = useState('')
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
+  const hiddenInputRef = useRef<HTMLInputElement>(null)
 
   const loadWords = useCallback(() => {
     try {
@@ -271,6 +273,50 @@ export default function Home() {
     setTotalCount(practiceData.length)
     setShowResult(false)
     setFocusedBlankIndex(0)
+    // 延迟聚焦，确保 DOM 已渲染
+    setTimeout(() => focusHiddenInput(), 100)
+  }
+
+  // 练习模式开始时自动聚焦隐藏输入框
+  useEffect(() => {
+    if (isPracticeMode && !showAnswer) {
+      setTimeout(() => focusHiddenInput(), 100)
+    }
+  }, [isPracticeMode, currentWordIndex])
+
+  // 处理隐藏输入框的变化（手机端）
+  const handleHiddenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    if (value.length === 0) return
+    
+    // 获取最后一个输入的字符
+    const lastChar = value[value.length - 1]
+    
+    // 只接受字母
+    if (/^[a-zA-Z]$/.test(lastChar)) {
+      const currentPractice = practiceWords[currentWordIndex]
+      if (currentPractice && currentPractice.blankPositions.length > 0) {
+        const blankCount = currentPractice.blankPositions.length
+        const newBlankPositions = [...currentPractice.blankPositions]
+        newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: lastChar }
+        const newPracticeWords = [...practiceWords]
+        newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
+        setPracticeWords(newPracticeWords)
+        if (focusedBlankIndex < blankCount - 1) {
+          setFocusedBlankIndex(focusedBlankIndex + 1)
+        }
+      }
+    }
+    
+    // 清空隐藏输入框，准备接收下一个字符
+    setHiddenInputValue('')
+  }
+
+  // 聚焦隐藏输入框（触发手机键盘）
+  const focusHiddenInput = () => {
+    if (hiddenInputRef.current) {
+      hiddenInputRef.current.focus()
+    }
   }
 
   useEffect(() => {
@@ -343,6 +389,7 @@ export default function Home() {
     setPracticeWords(newPracticeWords)
     setShowAnswer(false)
     setFocusedBlankIndex(0)
+    setTimeout(() => focusHiddenInput(), 100)
   }
 
   const renderBlankedWord = (practice: PracticeWord) => {
@@ -359,7 +406,7 @@ export default function Home() {
             const isFocused = currentBlankIndex === focusedBlankIndex && !isCompleted
             return (
               <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div onClick={() => !isCompleted && setFocusedBlankIndex(currentBlankIndex)} style={{
+                <div onClick={() => { if (!isCompleted) { setFocusedBlankIndex(currentBlankIndex); focusHiddenInput() } }} style={{
                   width: '40px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '22px', fontWeight: 'bold', borderRadius: '12px', border: '2px solid',
                   cursor: isCompleted ? 'default' : 'pointer', userSelect: 'none', transition: 'all 0.2s',
@@ -471,6 +518,25 @@ export default function Home() {
     const currentPractice = practiceWords[currentWordIndex]
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
+        {/* 隐藏的输入框 - 用于触发手机键盘 */}
+        <input
+          ref={hiddenInputRef}
+          type="text"
+          inputMode="latin"
+          pattern="[a-zA-Z]*"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck="false"
+          value={hiddenInputValue}
+          onChange={handleHiddenInputChange}
+          style={{
+            position: 'absolute',
+            opacity: 0,
+            pointerEvents: 'none',
+            height: 0,
+            width: 0
+          }}
+        />
         <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
           <div style={{ maxWidth: '400px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <button onClick={exitPractice} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '14px', cursor: 'pointer' }}>✕ 退出</button>
