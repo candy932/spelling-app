@@ -517,7 +517,10 @@ export default function Home() {
   if (isPracticeMode && practiceWords.length > 0) {
     const currentPractice = practiceWords[currentWordIndex]
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
+      <div 
+        style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}
+        onClick={() => focusHiddenInput()}
+      >
         {/* 隐藏的输入框 - 用于触发手机键盘 */}
         <input
           ref={hiddenInputRef}
@@ -527,14 +530,22 @@ export default function Home() {
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck="false"
+          autoComplete="off"
           value={hiddenInputValue}
           onChange={handleHiddenInputChange}
           style={{
-            position: 'absolute',
-            opacity: 0,
-            pointerEvents: 'none',
-            height: 0,
-            width: 0
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '1px',
+            height: '1px',
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            fontSize: '1px',
+            zIndex: -1
           }}
         />
         <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
