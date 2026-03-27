@@ -53,11 +53,8 @@ export default function Home() {
   const [showResult, setShowResult] = useState(false)
   const [practiceHistory, setPracticeHistory] = useState<PracticeRecord[]>([])
   const [focusedBlankIndex, setFocusedBlankIndex] = useState<number>(0)
-  const [hiddenInputValue, setHiddenInputValue] = useState('')
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
-  const hiddenInputRef = useRef<HTMLInputElement>(null)
-  const focusedBlankIndexRef = useRef<number>(0)
 
   const loadWords = useCallback(() => {
     try {
@@ -273,97 +270,8 @@ export default function Home() {
     setCorrectCount(0)
     setTotalCount(practiceData.length)
     setShowResult(false)
-    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
-    // 延迟聚焦，确保 DOM 已渲染
-    setTimeout(() => focusHiddenInput(), 100)
   }
-
-  // 练习模式开始时自动聚焦隐藏输入框
-  useEffect(() => {
-    if (isPracticeMode && !showAnswer) {
-      setTimeout(() => focusHiddenInput(), 100)
-    }
-  }, [isPracticeMode, currentWordIndex])
-
-  // 处理隐藏输入框的变化（手机端）
-  const handleHiddenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    if (value.length === 0) return
-    
-    // 获取最后一个输入的字符
-    const lastChar = value[value.length - 1]
-    
-    // 只接受字母
-    if (/^[a-zA-Z]$/.test(lastChar)) {
-      const currentPractice = practiceWords[currentWordIndex]
-      const currentIndex = focusedBlankIndexRef.current  // 使用 ref 获取最新值
-      if (currentPractice && currentPractice.blankPositions.length > 0) {
-        const blankCount = currentPractice.blankPositions.length
-        const newBlankPositions = [...currentPractice.blankPositions]
-        newBlankPositions[currentIndex] = { ...newBlankPositions[currentIndex], userAnswer: lastChar }
-        const newPracticeWords = [...practiceWords]
-        newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-        setPracticeWords(newPracticeWords)
-        if (currentIndex < blankCount - 1) {
-          focusedBlankIndexRef.current = currentIndex + 1
-          setFocusedBlankIndex(currentIndex + 1)
-        }
-      }
-    }
-    
-    // 清空隐藏输入框，准备接收下一个字符
-    setHiddenInputValue('')
-  }
-
-  // 聚焦隐藏输入框（触发手机键盘）
-  const focusHiddenInput = () => {
-    if (hiddenInputRef.current) {
-      hiddenInputRef.current.focus()
-    }
-  }
-
-  useEffect(() => {
-    if (!isPracticeMode || showAnswer) return
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const currentPractice = practiceWords[currentWordIndex]
-      if (!currentPractice || currentPractice.blankPositions.length === 0) return
-      const blankCount = currentPractice.blankPositions.length
-      if (/^[a-zA-Z]$/.test(e.key)) {
-        const newBlankPositions = [...currentPractice.blankPositions]
-        newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: e.key }
-        const newPracticeWords = [...practiceWords]
-        newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-        setPracticeWords(newPracticeWords)
-        if (focusedBlankIndex < blankCount - 1) setFocusedBlankIndex(focusedBlankIndex + 1)
-        return
-      }
-      if (e.key === 'Backspace') {
-        const currentValue = currentPractice.blankPositions[focusedBlankIndex].userAnswer
-        if (currentValue !== '') {
-          const newBlankPositions = [...currentPractice.blankPositions]
-          newBlankPositions[focusedBlankIndex] = { ...newBlankPositions[focusedBlankIndex], userAnswer: '' }
-          const newPracticeWords = [...practiceWords]
-          newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-          setPracticeWords(newPracticeWords)
-        } else if (focusedBlankIndex > 0) {
-          const newIndex = focusedBlankIndex - 1
-          setFocusedBlankIndex(newIndex)
-          const newBlankPositions = [...currentPractice.blankPositions]
-          newBlankPositions[newIndex] = { ...newBlankPositions[newIndex], userAnswer: '' }
-          const newPracticeWords = [...practiceWords]
-          newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-          setPracticeWords(newPracticeWords)
-        }
-        return
-      }
-      if (e.key === 'Enter') { checkAnswer(); return }
-      if (e.key === 'ArrowLeft' && focusedBlankIndex > 0) setFocusedBlankIndex(focusedBlankIndex - 1)
-      if (e.key === 'ArrowRight' && focusedBlankIndex < blankCount - 1) setFocusedBlankIndex(focusedBlankIndex + 1)
-    }
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [isPracticeMode, showAnswer, currentWordIndex, practiceWords, focusedBlankIndex])
 
   const checkAnswer = () => {
     const currentPractice = practiceWords[currentWordIndex]
@@ -379,7 +287,6 @@ export default function Home() {
     if (currentWordIndex < practiceWords.length - 1) {
       setCurrentWordIndex(prev => prev + 1)
       setShowAnswer(false)
-      focusedBlankIndexRef.current = 0
       setFocusedBlankIndex(0)
     } else {
       saveHistory(totalCount, correctCount)
@@ -393,9 +300,7 @@ export default function Home() {
     newPracticeWords[currentWordIndex] = { ...newPracticeWords[currentWordIndex], blankPositions: generateBlanks(newPracticeWords[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
     setPracticeWords(newPracticeWords)
     setShowAnswer(false)
-    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
-    setTimeout(() => focusHiddenInput(), 100)
   }
 
   const renderBlankedWord = (practice: PracticeWord) => {
@@ -410,21 +315,107 @@ export default function Home() {
             const currentBlankIndex = blankIndex++
             const isAnswerCorrect = blankPos.userAnswer.toLowerCase() === blankPos.char.toLowerCase()
             const isFocused = currentBlankIndex === focusedBlankIndex && !isCompleted
+            
+            // 处理单个格子的输入
+            const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+              const value = e.target.value
+              if (value.length === 0) {
+                // 删除
+                const newBlankPositions = [...blankPositions]
+                newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: '' }
+                const newPracticeWords = [...practiceWords]
+                newPracticeWords[currentWordIndex] = { ...practice, blankPositions: newBlankPositions }
+                setPracticeWords(newPracticeWords)
+              } else {
+                // 输入 - 取最后一个字符
+                const lastChar = value[value.length - 1]
+                if (/^[a-zA-Z]$/.test(lastChar)) {
+                  const newBlankPositions = [...blankPositions]
+                  newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: lastChar }
+                  const newPracticeWords = [...practiceWords]
+                  newPracticeWords[currentWordIndex] = { ...practice, blankPositions: newBlankPositions }
+                  setPracticeWords(newPracticeWords)
+                  
+                  // 自动跳到下一个空格
+                  if (currentBlankIndex < blankPositions.length - 1) {
+                    setFocusedBlankIndex(currentBlankIndex + 1)
+                  }
+                }
+              }
+            }
+            
+            const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Backspace' && blankPos.userAnswer === '' && currentBlankIndex > 0) {
+                // 当前格为空时，退格跳到上一格
+                setFocusedBlankIndex(currentBlankIndex - 1)
+              }
+              if (e.key === 'ArrowLeft' && currentBlankIndex > 0) {
+                setFocusedBlankIndex(currentBlankIndex - 1)
+              }
+              if (e.key === 'ArrowRight' && currentBlankIndex < blankPositions.length - 1) {
+                setFocusedBlankIndex(currentBlankIndex + 1)
+              }
+              if (e.key === 'Enter') {
+                checkAnswer()
+              }
+            }
+            
             return (
               <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div onClick={() => { if (!isCompleted) { focusedBlankIndexRef.current = currentBlankIndex; setFocusedBlankIndex(currentBlankIndex); focusHiddenInput() } }} style={{
-                  width: '40px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '22px', fontWeight: 'bold', borderRadius: '12px', border: '2px solid',
-                  cursor: isCompleted ? 'default' : 'pointer', userSelect: 'none', transition: 'all 0.2s',
-                  ...(isCompleted ? isAnswerCorrect
-                    ? { borderColor: '#34d399', background: 'linear-gradient(to bottom, #ecfdf5, #d1fae5)', color: '#047857', boxShadow: '0 10px 15px -3px rgba(52, 211, 153, 0.3)' }
-                    : { borderColor: '#fb7185', background: 'linear-gradient(to bottom, #fff1f2, #ffe4e6)', color: '#be123c', boxShadow: '0 10px 15px -3px rgba(251, 113, 133, 0.3)' }
-                    : isFocused
-                      ? { borderColor: '#f43f5e', background: 'linear-gradient(to bottom, #ffe4e6, #fecdd3)', color: '#be123c', boxShadow: '0 10px 25px -3px rgba(244, 63, 94, 0.5)', transform: 'scale(1.05)' }
-                      : { borderColor: '#a78bfa', background: 'linear-gradient(to bottom, #f5f3ff, #ffffff)', color: '#6d28d9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' })
-                }}>
-                  {blankPos.userAnswer}
-                </div>
+                <input
+                  type="text"
+                  inputMode="text"
+                  pattern="[a-zA-Z]*"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck="false"
+                  autoComplete="off"
+                  value={blankPos.userAnswer}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => setFocusedBlankIndex(currentBlankIndex)}
+                  disabled={isCompleted}
+                  autoFocus={isFocused}
+                  style={{
+                    width: '40px',
+                    height: '52px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '22px',
+                    fontWeight: 'bold',
+                    borderRadius: '12px',
+                    border: '2px solid',
+                    cursor: isCompleted ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    transition: 'all 0.2s',
+                    textAlign: 'center',
+                    padding: 0,
+                    outline: 'none',
+                    background: isCompleted
+                      ? isAnswerCorrect
+                        ? 'linear-gradient(to bottom, #ecfdf5, #d1fae5)'
+                        : 'linear-gradient(to bottom, #fff1f2, #ffe4e6)'
+                      : isFocused
+                        ? 'linear-gradient(to bottom, #ffe4e6, #fecdd3)'
+                        : 'linear-gradient(to bottom, #f5f3ff, #ffffff)',
+                    borderColor: isCompleted
+                      ? isAnswerCorrect ? '#34d399' : '#fb7185'
+                      : isFocused ? '#f43f5e' : '#a78bfa',
+                    color: isCompleted
+                      ? isAnswerCorrect ? '#047857' : '#be123c'
+                      : isFocused ? '#be123c' : '#6d28d9',
+                    boxShadow: isCompleted
+                      ? isAnswerCorrect
+                        ? '0 10px 15px -3px rgba(52, 211, 153, 0.3)'
+                        : '0 10px 15px -3px rgba(251, 113, 133, 0.3)'
+                      : isFocused
+                        ? '0 10px 25px -3px rgba(244, 63, 94, 0.5)'
+                        : '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    transform: isFocused ? 'scale(1.05)' : 'none',
+                    caretColor: 'transparent'
+                  }}
+                />
                 {isCompleted && !isAnswerCorrect && (
                   <span style={{ fontSize: '12px', color: '#059669', fontWeight: 'bold', marginTop: '6px', background: '#d1fae5', padding: '2px 8px', borderRadius: '9999px' }}>
                     {blankPos.char}
@@ -523,37 +514,7 @@ export default function Home() {
   if (isPracticeMode && practiceWords.length > 0) {
     const currentPractice = practiceWords[currentWordIndex]
     return (
-      <div 
-        style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}
-        onClick={() => focusHiddenInput()}
-      >
-        {/* 隐藏的输入框 - 用于触发手机键盘 */}
-        <input
-          ref={hiddenInputRef}
-          type="text"
-          inputMode="text"
-          pattern="[a-zA-Z]*"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck="false"
-          autoComplete="off"
-          value={hiddenInputValue}
-          onChange={handleHiddenInputChange}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '1px',
-            height: '1px',
-            padding: 0,
-            margin: 0,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontSize: '1px',
-            zIndex: -1
-          }}
-        />
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
         <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
           <div style={{ maxWidth: '400px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <button onClick={exitPractice} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '14px', cursor: 'pointer' }}>✕ 退出</button>
