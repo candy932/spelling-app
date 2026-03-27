@@ -360,6 +360,15 @@ export default function Home() {
               }
             }
             
+            // 将光标移到最右边
+            const moveCursorToEnd = (e: React.FocusEvent<HTMLInputElement> | React.MouseEvent<HTMLInputElement>) => {
+              const input = e.currentTarget
+              setTimeout(() => {
+                const len = input.value.length
+                input.setSelectionRange(len, len)
+              }, 0)
+            }
+            
             return (
               <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <input
@@ -373,7 +382,8 @@ export default function Home() {
                   value={blankPos.userAnswer}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  onFocus={() => setFocusedBlankIndex(currentBlankIndex)}
+                  onFocus={(e) => { setFocusedBlankIndex(currentBlankIndex); moveCursorToEnd(e) }}
+                  onClick={moveCursorToEnd}
                   disabled={isCompleted}
                   autoFocus={isFocused}
                   style={{
