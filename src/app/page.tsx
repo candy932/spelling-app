@@ -56,6 +56,13 @@ export default function Home() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
 
+  // ========== 🔧 BUG FIX: 新增的 ref ==========
+  // 记录每个 input 上一次的 DOM value，防止 React setState 后重复触发 onChange
+  const inputValuesRef = useRef<Record<string, string>>({})
+  // 防止程序主动设置 DOM value 时触发多余的 onChange
+  const isProgrammaticRef = useRef(false)
+  // ========== 🔧 BUG FIX END ==========
+
   const loadWords = useCallback(() => {
     try {
       const savedWords = localStorage.getItem('spellingWords')
@@ -271,6 +278,10 @@ export default function Home() {
     setTotalCount(practiceData.length)
     setShowResult(false)
     setFocusedBlankIndex(0)
+    // ========== 🔧 BUG FIX: 重置所有 tracking ==========
+    inputValuesRef.current = {}
+    isProgrammaticRef.current = false
+    // ========== 🔧 BUG FIX END ==========
   }
 
   const checkAnswer = () => {
@@ -288,6 +299,10 @@ export default function Home() {
       setCurrentWordIndex(prev => prev + 1)
       setShowAnswer(false)
       setFocusedBlankIndex(0)
+      // ========== 🔧 BUG FIX: 切换单词时重置 tracking ==========
+      inputValuesRef.current = {}
+      isProgrammaticRef.current = false
+      // ========== 🔧 BUG FIX END ==========
     } else {
       saveHistory(totalCount, correctCount)
       setShowResult(true)
@@ -301,6 +316,10 @@ export default function Home() {
     setPracticeWords(newPracticeWords)
     setShowAnswer(false)
     setFocusedBlankIndex(0)
+    // ========== 🔧 BUG FIX: 换一种填空时也重置 ==========
+    inputValuesRef.current = {}
+    isProgrammaticRef.current = false
+    // ========== 🔧 BUG FIX END ==========
   }
 
   const renderBlankedWord = (practice: PracticeWord) => {
@@ -308,7 +327,9 @@ export default function Home() {
     const letters = word.english.split('')
     let blankIndex = 0
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px', margin: '24px 0' }}>
+      // ========== 🔧 BUG FIX: 加 key 强制切换单词时重新挂载所有 input ==========
+      <div key={`blanked-${currentWordIndex}`} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px', margin: '24px 0' }}>
+        {/* ========== 🔧 BUG FIX END ========== */}
         {letters.map((char, index) => {
           const blankPos = blankPositions.find(bp => bp.index === index)
           if (blankPos) {
@@ -316,44 +337,92 @@ export default function Home() {
             const isAnswerCorrect = blankPos.userAnswer.toLowerCase() === blankPos.char.toLowerCase()
             const isFocused = currentBlankIndex === focusedBlankIndex && !isCompleted
             
-            // 处理单个格子的输入
+            // ========== 🔧 BUG FIX: 重写 handleInputChange ==========
             const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+              // 如果是自己程序设置 DOM value 触发的，直接忽略
+              if (isProgrammaticRef.current) return
+
               const value = e.target.value
+              const refKey = `${currentWordIndex}-${currentBlankIndex}`
+              const prevValue = inputValuesRef.current[refKey] || ''
+
               if (value.length === 0) {
                 // 删除
+                inputValuesRef.current[refKey] = ''
                 const newBlankPositions = [...blankPositions]
                 newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: '' }
                 const newPracticeWords = [...practiceWords]
                 newPracticeWords[currentWordIndex] = { ...practice, blankPositions: newBlankPositions }
                 setPracticeWords(newPracticeWords)
-              } else {
-                // 输入 - 取最后一个字符
+              } else if (value.length > prevValue.length) {
+                // 输入 - 只取新增的最后一个字符
                 const lastChar = value[value.length - 1]
                 if (/^[a-zA-Z]$/.test(lastChar)) {
+                  // 根据原始字母的大小写，自动匹配
+                  const originalChar = blankPositions[currentBlankIndex].char
+                  const matchedChar = originalChar === originalChar.toUpperCase()
+                    ? lastChar.toUpperCase()
+                    : lastChar.toLowerCase()
+
+                  inputValuesRef.current[refKey] = value
+
+                  // 标记为程序更新
+                  isProgrammaticRef.current = true
+
                   const newBlankPositions = [...blankPositions]
-                  newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: lastChar }
+                  newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: matchedChar }
                   const newPracticeWords = [...practiceWords]
                   newPracticeWords[currentWordIndex] = { ...practice, blankPositions: newBlankPositions }
                   setPracticeWords(newPracticeWords)
                   
-                  // 自动跳到下一个空格
-                  if (currentBlankIndex < blankPositions.length - 1) {
-                    setFocusedBlankIndex(currentBlankIndex + 1)
-                  }
+                  // 原子操作：清空 DOM value 后再跳到下一格
+                  setTimeout(() => {
+                    if (e.target) e.target.value = ''
+                    inputValuesRef.current[refKey] = ''
+                    isProgrammaticRef.current = false
+
+                    if (currentBlankIndex < blankPositions.length - 1) {
+                      setFocusedBlankIndex(currentBlankIndex + 1)
+                    }
+                  }, 0)
+                } else {
+                  // 无效字符，重置
+                  isProgrammaticRef.current = true
+                  e.target.value = ''
+                  inputValuesRef.current[refKey] = ''
+                  setTimeout(() => { isProgrammaticRef.current = false }, 0)
                 }
               }
             }
-            
+            // ========== 🔧 BUG FIX END ==========
+
             const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-              if (e.key === 'Backspace' && blankPos.userAnswer === '' && currentBlankIndex > 0) {
-                // 当前格为空时，退格跳到上一格
-                setFocusedBlankIndex(currentBlankIndex - 1)
+              if (e.key === 'Backspace') {
+                if (blankPos.userAnswer !== '') {
+                  // 清除当前格子的答案
+                  isProgrammaticRef.current = true
+                  const newBlankPositions = [...blankPositions]
+                  newBlankPositions[currentBlankIndex] = { ...newBlankPositions[currentBlankIndex], userAnswer: '' }
+                  const newPracticeWords = [...practiceWords]
+                  newPracticeWords[currentWordIndex] = { ...practice, blankPositions: newBlankPositions }
+                  setPracticeWords(newPracticeWords)
+                  const refKey = `${currentWordIndex}-${currentBlankIndex}`
+                  inputValuesRef.current[refKey] = ''
+                  setTimeout(() => { isProgrammaticRef.current = false }, 0)
+                  e.preventDefault()
+                } else if (currentBlankIndex > 0) {
+                  // 当前格为空时，退格跳到上一格
+                  setFocusedBlankIndex(currentBlankIndex - 1)
+                  e.preventDefault()
+                }
               }
               if (e.key === 'ArrowLeft' && currentBlankIndex > 0) {
                 setFocusedBlankIndex(currentBlankIndex - 1)
+                e.preventDefault()
               }
               if (e.key === 'ArrowRight' && currentBlankIndex < blankPositions.length - 1) {
                 setFocusedBlankIndex(currentBlankIndex + 1)
+                e.preventDefault()
               }
               if (e.key === 'Enter') {
                 checkAnswer()
@@ -444,7 +513,16 @@ export default function Home() {
     )
   }
 
-  const exitPractice = () => { setIsPracticeMode(false); setPracticeWords([]); setCurrentWordIndex(0); setShowResult(false) }
+  const exitPractice = () => {
+    setIsPracticeMode(false)
+    setPracticeWords([])
+    setCurrentWordIndex(0)
+    setShowResult(false)
+    // ========== 🔧 BUG FIX: 退出时也清掉 ==========
+    inputValuesRef.current = {}
+    // ========== 🔧 BUG FIX END ==========
+  }
+
   const getAccuracy = () => totalCount === 0 ? 0 : Math.round((correctCount / totalCount) * 100)
   const getEncouragement = () => {
     const accuracy = getAccuracy()
