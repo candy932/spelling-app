@@ -55,185 +55,177 @@ export default function Home() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // ==================== 核心修复：用 Ref 彻底避免闭包陷阱 ====================
+  // ==================== v7 全新方案：每个格子一个独立 input ====================
+  // 每个 blank 对应一个真正的 <input maxLength={1}> 元素
+  // 浏览器原生保证最多输入1个字符，不需要手动清空
+  // 没有 hidden input，没有闭包陷阱，没有事件级联
 
-  // 用 ref 跟踪当前焦点格子 —— 永远读到最新值，不受 React 渲染时序影响
-  const focusedBlankIndexRef = useRef(0)
+  // 存储每个 blank input 的 DOM 引用
+  const blankInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // 同时更新 ref 和 state（state 用于渲染高亮，ref 用于逻辑判断）
-  const updateFocusedBlank = useCallback((index: number) => {
-    focusedBlankIndexRef.current = index
-    setFocusedBlankIndex(index)
-  }, [])
+  // 中文输入法追踪
+  const isComposingRef = useRef(false)
 
-  // 隐藏 input 捕获键盘输入
-  const hiddenInputRef = useRef<HTMLInputElement>(null)
-
-  // 上一次 input 的值长度，用来判断新增了几个字符
-  const prevInputLenRef = useRef(0)
-
-  // 正在处理的标志位，防止同一个字符被处理两次
-  const isProcessingRef = useRef(false)
-
-  // 当 focusedBlankIndex 变化时，确保隐藏 input 获得焦点
+  // 切换单词时，自动聚焦第一个空格子
   useEffect(() => {
-    if (isPracticeMode && !showAnswer && hiddenInputRef.current) {
-      hiddenInputRef.current.focus()
+    if (isPracticeMode && !showAnswer) {
+      const timer = setTimeout(() => {
+        blankInputRefs.current[0]?.focus()
+      }, 150)
+      return () => clearTimeout(timer)
     }
-  }, [focusedBlankIndex, isPracticeMode, showAnswer, currentWordIndex])
+  }, [currentWordIndex, isPracticeMode, showAnswer])
 
-  // 安全地清空隐藏 input
-  const clearHiddenInput = useCallback(() => {
-    if (hiddenInputRef.current) {
-      hiddenInputRef.current.value = ''
-      prevInputLenRef.current = 0
-    }
-  }, [])
+  // 处理某个 blank input 收到输入
+  const handleBlankInput = useCallback((blankIdx: number, totalBlanks: number) => {
+    return (e: React.FormEvent<HTMLInputElement>) => {
+      // 中文输入法正在组合中，忽略
+      if (isComposingRef.current) return
+      if (showAnswer) return
 
-  // 隐藏 input 的 onChange：处理字符输入
-  const handleHiddenInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // 防止重复处理
-    if (isProcessingRef.current) return
-    if (!isPracticeMode || showAnswer) return
+      const input = e.currentTarget as HTMLInputElement
+      const raw = input.value
 
-    const value = e.target.value
-    const prevLen = prevInputLenRef.current
-    const newLen = value.length
+      // 提取最后一个英文字母（如果有的话）
+      const match = raw.match(/[a-zA-Z]/)
+      const letter = match ? match[match.length - 1] : ''
 
-    // 没有新增字符，跳过
-    if (newLen <= prevLen) {
-      // 可能是删除操作，同步更新 ref
-      prevInputLenRef.current = newLen
-      return
-    }
-
-    // 提取新增的字符（只取最后一个）
-    const newChar = value[newLen - 1]
-
-    // 更新已处理长度
-    prevInputLenRef.current = newLen
-
-    // 只接受英文字母
-    if (!/^[a-zA-Z]$/.test(newChar)) {
-      // 清掉非法字符
-      requestAnimationFrame(() => clearHiddenInput())
-      return
-    }
-
-    // 设置处理锁
-    isProcessingRef.current = true
-
-    // 从 ref 读取当前焦点（关键！不用闭包里的 focusedBlankIndex）
-    const fi = focusedBlankIndexRef.current
-
-    // 读取当前单词的 blank 信息（也用 ref 避免闭包问题）
-    const wordIdx = currentWordIndexRef.current
-
-    setPracticeWords(prev => {
-      const cp = prev[wordIdx]
-      if (!cp || cp.isCompleted) {
-        isProcessingRef.current = false
-        return prev
-      }
-      const blanks = cp.blankPositions
-      if (fi < 0 || fi >= blanks.length) {
-        isProcessingRef.current = false
-        return prev
+      if (!letter) {
+        // 输入为空或非字母（可能是退格键清空了）
+        // 更新 state 清空这个格子
+        setPracticeWords(prev => {
+          const cp = prev[currentWordIndex]
+          if (!cp || cp.isCompleted) return prev
+          const nbp = [...cp.blankPositions]
+          nbp[blankIdx] = { ...nbp[blankIdx], userAnswer: '' }
+          const npw = [...prev]
+          npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+          return npw
+        })
+        return
       }
 
-      const expected = blanks[fi].char
-      const matched = expected === expected.toUpperCase() ? newChar.toUpperCase() : newChar.toLowerCase()
-
-      const npw = [...prev]
-      const nbp = [...blanks]
-      nbp[fi] = { ...nbp[fi], userAnswer: matched }
-      npw[wordIdx] = { ...cp, blankPositions: nbp }
-
-      // 在下一个 tick 清空 input 并跳格
-      setTimeout(() => {
-        clearHiddenInput()
-        isProcessingRef.current = false
-
-        // 如果还有下一个格子，跳过去
-        if (fi < blanks.length - 1) {
-          updateFocusedBlank(fi + 1)
-        }
-      }, 0)
-
-      return npw
-    })
-  }, [isPracticeMode, showAnswer, updateFocusedBlank, clearHiddenInput])
-
-  // 隐藏 input 的 onKeyDown：处理退格/方向键/回车（桌面端用）
-  const handleHiddenInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isPracticeMode || showAnswer) return
-
-    if (e.key === 'Backspace') {
-      e.preventDefault()
-      const fi = focusedBlankIndexRef.current
-      const wordIdx = currentWordIndexRef.current
-
+      // 有一个有效字母，写入当前格子
+      // 根据期望字符的大小写来决定
       setPracticeWords(prev => {
-        const cp = prev[wordIdx]
+        const cp = prev[currentWordIndex]
         if (!cp || cp.isCompleted) return prev
-        const blanks = cp.blankPositions
-        if (fi < 0 || fi >= blanks.length) return prev
-
+        const expected = cp.blankPositions[blankIdx].char
+        const matched = expected === expected.toUpperCase()
+          ? letter.toUpperCase()
+          : letter.toLowerCase()
+        const nbp = [...cp.blankPositions]
+        nbp[blankIdx] = { ...nbp[blankIdx], userAnswer: matched }
         const npw = [...prev]
-        const nbp = [...blanks]
-        if (nbp[fi].userAnswer !== '') {
-          nbp[fi] = { ...nbp[fi], userAnswer: '' }
-          npw[wordIdx] = { ...cp, blankPositions: nbp }
-          return npw
-        } else if (fi > 0) {
-          nbp[fi - 1] = { ...nbp[fi - 1], userAnswer: '' }
-          npw[wordIdx] = { ...cp, blankPositions: nbp }
-          updateFocusedBlank(fi - 1)
-          return npw
-        }
-        return prev
+        npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+        return npw
       })
-      return
-    }
 
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      if (focusedBlankIndexRef.current > 0) updateFocusedBlank(focusedBlankIndexRef.current - 1)
-      return
+      // 如果输入了非字母字符混在里面，清理一下 input
+      const clean = /^[a-zA-Z]$/.test(raw) ? raw : letter
+      if (input.value !== clean) {
+        input.value = clean
+      }
+
+      // 自动跳到下一个空格子
+      if (blankIdx < totalBlanks - 1) {
+        const timer = setTimeout(() => {
+          blankInputRefs.current[blankIdx + 1]?.focus()
+        }, 80)
+        return () => clearTimeout(timer)
+      }
     }
-    if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      const wordIdx = currentWordIndexRef.current
-      setPracticeWords(prev => {
-        const blanks = prev[wordIdx]?.blankPositions
-        if (blanks && focusedBlankIndexRef.current < blanks.length - 1) {
-          updateFocusedBlank(focusedBlankIndexRef.current + 1)
+  }, [currentWordIndex, showAnswer])
+
+  // 桌面端：退格键、方向键、回车
+  const handleBlankKeyDown = useCallback((blankIdx: number, totalBlanks: number) => {
+    return (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (showAnswer) return
+
+      if (e.key === 'Backspace') {
+        const input = blankInputRefs.current[blankIdx]
+        if (input && input.value === '' && blankIdx > 0) {
+          // 当前格子已经空了，跳到上一格并清空
+          e.preventDefault()
+          const prevInput = blankInputRefs.current[blankIdx - 1]
+          if (prevInput) {
+            prevInput.focus()
+            prevInput.value = ''
+            setPracticeWords(prev => {
+              const cp = prev[currentWordIndex]
+              if (!cp || cp.isCompleted) return prev
+              const nbp = [...cp.blankPositions]
+              nbp[blankIdx - 1] = { ...nbp[blankIdx - 1], userAnswer: '' }
+              const npw = [...prev]
+              npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+              return npw
+            })
+          }
         }
-        return prev
-      })
-      return
+        return
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        if (blankIdx > 0) blankInputRefs.current[blankIdx - 1]?.focus()
+        return
+      }
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        if (blankIdx < totalBlanks - 1) blankInputRefs.current[blankIdx + 1]?.focus()
+        return
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        checkAnswer()
+        return
+      }
     }
-    if (e.key === 'Enter') { e.preventDefault(); checkAnswer(); return }
-  }, [isPracticeMode, showAnswer, updateFocusedBlank])
+  }, [currentWordIndex, showAnswer])
 
-  // currentWordIndex 也用 ref 拷贝一份，避免闭包读到旧值
-  const currentWordIndexRef = useRef(0)
-  useEffect(() => {
-    currentWordIndexRef.current = currentWordIndex
-  }, [currentWordIndex])
+  // 点击某个格子时聚焦对应的 input
+  const handleBlankFocus = useCallback((blankIdx: number) => {
+    return () => {
+      setFocusedBlankIndex(blankIdx)
+    }
+  }, [])
 
-  // 点击某个格子时，设置焦点并聚焦隐藏 input
-  const handleCellClick = useCallback((blankIndex: number) => {
-    // 立即更新 ref（同步）
-    focusedBlankIndexRef.current = blankIndex
-    setFocusedBlankIndex(blankIndex)
-    // 清空隐藏 input，防止残留值干扰
-    clearHiddenInput()
-    // 稍后聚焦
-    setTimeout(() => { hiddenInputRef.current?.focus() }, 50)
-  }, [clearHiddenInput])
+  // 中文输入法事件
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true
+  }, [])
 
-  // ==================== 隐藏 input END ====================
+  const handleCompositionEnd = useCallback((blankIdx: number) => {
+    return (e: React.CompositionEvent<HTMLInputElement>) => {
+      isComposingRef.current = false
+      const input = e.currentTarget as HTMLInputElement
+      const val = input.value
+      // 如果最终值不是英文字母，清空
+      if (!/^[a-zA-Z]$/.test(val)) {
+        input.value = ''
+        // 也更新 state
+        setPracticeWords(prev => {
+          const cp = prev[currentWordIndex]
+          if (!cp || cp.isCompleted) return prev
+          const nbp = [...cp.blankPositions]
+          nbp[blankIdx] = { ...nbp[blankIdx], userAnswer: '' }
+          const npw = [...prev]
+          npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+          return npw
+        })
+      }
+      // 如果是英文字母，触发正常处理
+      else {
+        // 模拟 onInput
+        const fakeEvent = { currentTarget: input } as React.FormEvent<HTMLInputElement>
+        handleBlankInput(blankIdx, 99)(fakeEvent)
+      }
+    }
+  }, [currentWordIndex, handleBlankInput])
+
+  // ==================== v7 END ====================
 
   const loadWords = useCallback(() => {
     try {
@@ -331,35 +323,42 @@ export default function Home() {
     const pd = sw.map(word => ({ word, blankPositions: generateBlanks(word.english), isCompleted: false, isCorrect: null }))
     setPracticeWords(pd); setCurrentWordIndex(0); setIsPracticeMode(true); setShowAnswer(false)
     setCorrectCount(0); setTotalCount(pd.length); setShowResult(false)
-    // 重置焦点
-    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
-    // 清空隐藏 input
-    clearHiddenInput()
-    isProcessingRef.current = false
-    prevInputLenRef.current = 0
+    blankInputRefs.current = []
   }
 
   const checkAnswer = () => {
     const cp = practiceWords[currentWordIndex]
     if (!cp) return
-    const ok = cp.blankPositions.every(b => b.userAnswer.toLowerCase() === b.char.toLowerCase())
+
+    // 关键：直接从 DOM input 读取实际值，不走 state
+    // 这样即使 React state 还没更新，也能拿到最新的输入
+    const actualAnswers = cp.blankPositions.map((bp, i) => {
+      const input = blankInputRefs.current[i]
+      if (!input) return ''
+      const val = input.value
+      const match = val.match(/[a-zA-Z]/)
+      if (!match) return ''
+      const letter = match[0]
+      return bp.char === bp.char.toUpperCase() ? letter.toUpperCase() : letter.toLowerCase()
+    })
+
+    const ok = actualAnswers.every((ans, i) => ans.toLowerCase() === cp.blankPositions[i].char.toLowerCase())
+
+    // 用实际 DOM 值更新 state
+    const nbp = cp.blankPositions.map((bp, i) => ({ ...bp, userAnswer: actualAnswers[i] }))
     const npw = [...practiceWords]
-    npw[currentWordIndex] = { ...cp, isCompleted: true, isCorrect: ok }
-    setPracticeWords(npw); setShowAnswer(true)
+    npw[currentWordIndex] = { ...cp, blankPositions: nbp, isCompleted: true, isCorrect: ok }
+    setPracticeWords(npw)
+    setShowAnswer(true)
     if (ok) setCorrectCount(prev => prev + 1)
   }
 
   const nextWord = () => {
     if (currentWordIndex < practiceWords.length - 1) {
       setCurrentWordIndex(prev => prev + 1); setShowAnswer(false)
-      // 重置焦点到第一个空格
-      focusedBlankIndexRef.current = 0
       setFocusedBlankIndex(0)
-      // 清空隐藏 input，防止上一个单词的残留值触发 onChange
-      clearHiddenInput()
-      isProcessingRef.current = false
-      prevInputLenRef.current = 0
+      blankInputRefs.current = []
     } else {
       saveHistory(totalCount, correctCount); setShowResult(true); setIsPracticeMode(false)
     }
@@ -369,13 +368,8 @@ export default function Home() {
     const npw = [...practiceWords]
     npw[currentWordIndex] = { ...npw[currentWordIndex], blankPositions: generateBlanks(npw[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
     setPracticeWords(npw); setShowAnswer(false)
-    // 重置焦点
-    focusedBlankIndexRef.current = 0
     setFocusedBlankIndex(0)
-    // 清空隐藏 input
-    clearHiddenInput()
-    isProcessingRef.current = false
-    prevInputLenRef.current = 0
+    blankInputRefs.current = []
   }
 
   const exitPractice = () => { setIsPracticeMode(false); setPracticeWords([]); setCurrentWordIndex(0); setShowResult(false) }
@@ -408,11 +402,13 @@ export default function Home() {
     return { bg, border, color, shadow, transform }
   }
 
-  // 渲染填空单词
+  // 渲染填空单词 —— 每个空白位置是一个真正的 <input>
   const renderBlankedWord = (practice: PracticeWord) => {
     const { word, blankPositions, isCompleted } = practice
     const letters = word.english.split('')
+    const totalBlanks = blankPositions.length
     let blankIndex = 0
+
     return (
       <div key={`bw-${currentWordIndex}`} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px', margin: '24px 0' }}>
         {letters.map((char, index) => {
@@ -423,27 +419,54 @@ export default function Home() {
             const isFocused = bi === focusedBlankIndex && !isCompleted && !showAnswer
             const cs = getCellStyle(isFocused, !!blankPos.userAnswer, isCompleted, isAnswerCorrect)
 
+            // 显示用的值：完成后用 state，否则 input 自己显示
+            const displayValue = isCompleted ? blankPos.userAnswer : undefined
+
             return (
               <div key={`b-${currentWordIndex}-${bi}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div
-                  onClick={() => !isCompleted && handleCellClick(bi)}
+                <input
+                  ref={(el) => { blankInputRefs.current[bi] = el }}
+                  type="text"
+                  maxLength={1}
+                  defaultValue=""
+                  inputMode="text"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellCheck={false}
+                  autoComplete="off"
+                  readOnly={isCompleted || showAnswer}
+                  onInput={handleBlankInput(bi, totalBlanks)}
+                  onKeyDown={handleBlankKeyDown(bi, totalBlanks)}
+                  onFocus={handleBlankFocus(bi)}
+                  onCompositionStart={handleCompositionStart}
+                  onCompositionEnd={handleCompositionEnd(bi)}
+                  value={displayValue}
                   style={{
-                    width: '40px', height: '52px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '22px', fontWeight: 'bold',
+                    width: '40px',
+                    height: '52px',
+                    textAlign: 'center' as const,
+                    fontSize: '22px',
+                    fontWeight: 'bold' as const,
+                    fontFamily: 'inherit',
                     borderRadius: '12px',
                     border: `2px solid ${cs.border}`,
-                    cursor: isCompleted ? 'default' : 'pointer',
+                    outline: 'none',
+                    cursor: isCompleted ? 'default' : 'text',
                     userSelect: 'none',
                     transition: 'all 0.2s',
                     background: cs.bg,
                     color: cs.color,
                     boxShadow: cs.shadow,
                     transform: cs.transform,
+                    caretColor: 'transparent',
+                    padding: '0',
+                    // 防止 iOS 缩放
+                    WebkitAppearance: 'none' as any,
+                    appearance: 'none' as any,
                   }}
-                >
-                  {blankPos.userAnswer || ''}
-                </div>
+                />
                 {isCompleted && !isAnswerCorrect && (
                   <span style={{ fontSize: '12px', color: '#059669', fontWeight: 'bold', marginTop: '6px', background: '#d1fae5', padding: '2px 8px', borderRadius: '9999px' }}>
                     {blankPos.char}
@@ -527,34 +550,6 @@ export default function Home() {
     const cp = practiceWords[currentWordIndex]
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
-        {/* ========== 隐藏 input：捕获所有键盘输入 ========== */}
-        <input
-          ref={hiddenInputRef}
-          type="text"
-          inputMode="text"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          autoComplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          onChange={handleHiddenInputChange}
-          onKeyDown={handleHiddenInputKeyDown}
-          style={{
-            position: 'fixed',
-            left: '-9999px',
-            top: '0',
-            width: '1px',
-            height: '1px',
-            opacity: 0,
-            fontSize: '16px',
-            border: 'none',
-            outline: 'none',
-            pointerEvents: 'none',
-          }}
-        />
-        {/* ========== 隐藏 input END ========== */}
-
         <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
           <div style={{ maxWidth: '400px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <button onClick={exitPractice} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '14px', cursor: 'pointer' }}>✕ 退出</button>
@@ -592,7 +587,7 @@ export default function Home() {
             </div>
           </div>
         </main>
-        <div style={{ maxWidth: '400px', margin: '0 auto', padding: '0 16px 20px', width: '100%', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>⌨️ 点击格子选中 · 输入字母填入 · 退格键删除 · 方向键切换</div>
+        <div style={{ maxWidth: '400px', margin: '0 auto', padding: '0 16px 20px', width: '100%', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>⌨️ 点击格子 · 输入字母 · 自动跳格 · 退格删除</div>
       </div>
     )
   }
