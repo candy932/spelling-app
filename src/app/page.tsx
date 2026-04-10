@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface Word {
   id: string
@@ -29,8 +29,9 @@ interface PracticeRecord {
   date: string
 }
 
-// ==================== 独立的填空输入组件 ====================
-// 使用非受控输入 + useRef 管理焦点，彻底避免 React 受控输入的 onChange 级联问题
+// ==================== 填空输入组件 ====================
+// 核心策略：用 onKeyDown 拦截所有按键，preventDefault 阻止字符进入输入框
+// 输入框纯粹作为焦点载体，字母通过 state + 覆盖层显示
 interface BlankInputProps {
   expectedChar: string
   userAnswer: string
@@ -42,9 +43,10 @@ interface BlankInputProps {
   onMoveLeft: () => void
   onMoveRight: () => void
   onEnter: () => void
+  onFocusBlank: () => void
 }
 
-const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
+function BlankInput({
   expectedChar,
   userAnswer,
   isFocused,
@@ -55,39 +57,31 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
   onMoveLeft,
   onMoveRight,
   onEnter,
-}, ref) => {
+  onFocusBlank,
+}: BlankInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useImperativeHandle(ref, () => inputRef.current!)
-
-  // 焦点管理：用 useEffect 替代 autoFocus，避免只在 mount 时触发一次的问题
+  // 焦点管理：isFocused 变化时自动聚焦
   useEffect(() => {
     if (isFocused && inputRef.current && !isCompleted) {
-      inputRef.current.value = ''
       inputRef.current.focus()
     }
   }, [isFocused, isCompleted])
 
-  // 输入处理：非受控输入，手动读取值后立即清空
-  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isCompleted) return
-    const value = e.target.value
-    if (!value) return
-    const lastChar = value[value.length - 1]
-    // 立即清空输入框（在 React 重新渲染之前）
-    e.target.value = ''
-    e.stopPropagation()
-    if (/^[a-zA-Z]$/.test(lastChar)) {
-      // 根据原始字母大小写自动匹配
-      const matchedChar = expectedChar === expectedChar.toUpperCase()
-        ? lastChar.toUpperCase()
-        : lastChar.toLowerCase()
-      onCharInput(matchedChar)
-    }
-  }
-
+  // 核心输入处理：用 onKeyDown 拦截，不让任何字符进入输入框
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (isCompleted) return
+
+    // 字母输入：直接在 keyDown 阶段处理，preventDefault 阻止字符进入 input
+    if (e.key.length === 1 && /^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault()
+      const matchedChar = expectedChar === expectedChar.toUpperCase()
+        ? e.key.toUpperCase()
+        : e.key.toLowerCase()
+      onCharInput(matchedChar)
+      return
+    }
+
     if (e.key === 'Backspace') {
       e.preventDefault()
       if (userAnswer !== '') {
@@ -95,66 +89,61 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
       } else {
         onMoveLeft()
       }
+      return
     }
-    if (e.key === 'ArrowLeft' && !e.shiftKey) { e.preventDefault(); onMoveLeft() }
-    if (e.key === 'ArrowRight' && !e.shiftKey) { e.preventDefault(); onMoveRight() }
-    if (e.key === 'Enter') { e.preventDefault(); onEnter() }
+
+    if (e.key === 'ArrowLeft' && !e.shiftKey) { e.preventDefault(); onMoveLeft(); return }
+    if (e.key === 'ArrowRight' && !e.shiftKey) { e.preventDefault(); onMoveRight(); return }
+    if (e.key === 'Enter') { e.preventDefault(); onEnter(); return }
   }
 
+  // 备用：防止任何字符意外进入输入框（极端情况兜底）
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.target.value = ''
+  }
+
+  // 点击时聚焦
   const handleClick = () => {
-    if (inputRef.current && !isCompleted) {
-      inputRef.current.value = ''
-      inputRef.current.focus()
-    }
+    onFocusBlank()
   }
 
-  // 决定格子的视觉状态
+  // 视觉样式
   const bgStyle = isCompleted
-    ? isAnswerCorrect
-      ? 'linear-gradient(to bottom, #ecfdf5, #d1fae5)'
-      : 'linear-gradient(to bottom, #fff1f2, #ffe4e6)'
-    : userAnswer
-      ? 'linear-gradient(to bottom, #d1fae5, #a7f3d0)'
-      : isFocused
-        ? 'linear-gradient(to bottom, #ffe4e6, #fecdd3)'
-        : 'linear-gradient(to bottom, #f5f3ff, #ffffff)'
+    ? isAnswerCorrect ? 'linear-gradient(to bottom, #ecfdf5, #d1fae5)' : 'linear-gradient(to bottom, #fff1f2, #ffe4e6)'
+    : userAnswer ? 'linear-gradient(to bottom, #d1fae5, #a7f3d0)'
+    : isFocused ? 'linear-gradient(to bottom, #ffe4e6, #fecdd3)'
+    : 'linear-gradient(to bottom, #f5f3ff, #ffffff)'
 
   const borderStyle = isCompleted
     ? isAnswerCorrect ? '#34d399' : '#fb7185'
-    : userAnswer
-      ? '#34d399'
-      : isFocused ? '#f43f5e' : '#a78bfa'
+    : userAnswer ? '#34d399'
+    : isFocused ? '#f43f5e' : '#a78bfa'
 
   const colorStyle = isCompleted
     ? isAnswerCorrect ? '#047857' : '#be123c'
-    : userAnswer
-      ? '#047857'
-      : isFocused ? '#be123c' : '#6d28d9'
+    : userAnswer ? '#047857'
+    : isFocused ? '#be123c' : '#6d28d9'
 
   const shadowStyle = isCompleted
-    ? isAnswerCorrect
-      ? '0 10px 15px -3px rgba(52, 211, 153, 0.3)'
-      : '0 10px 15px -3px rgba(251, 113, 133, 0.3)'
-    : isFocused
-      ? '0 10px 25px -3px rgba(244, 63, 94, 0.5)'
-      : '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+    ? isAnswerCorrect ? '0 10px 15px -3px rgba(52, 211, 153, 0.3)' : '0 10px 15px -3px rgba(251, 113, 133, 0.3)'
+    : isFocused ? '0 10px 25px -3px rgba(244, 63, 94, 0.5)'
+    : '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
       <div style={{ position: 'relative', width: '40px', height: '52px' }}>
-        {/* 底层：非受控输入框（始终视觉上为空） */}
+        {/* 底层：纯焦点载体 input，永远不显示字符 */}
         <input
           ref={inputRef}
           type="text"
-          maxLength={1}
           inputMode="text"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck="false"
           autoComplete="off"
           defaultValue=""
-          onChange={handleInput}
           onKeyDown={handleKeyDown}
+          onChange={handleInput}
           onClick={handleClick}
           disabled={isCompleted}
           style={{
@@ -166,7 +155,7 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
             fontSize: '22px',
             fontWeight: 'bold',
             borderRadius: '12px',
-            border: '2px solid',
+            border: `2px solid ${borderStyle}`,
             cursor: isCompleted ? 'default' : 'pointer',
             userSelect: 'none',
             transition: 'all 0.2s',
@@ -174,7 +163,6 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
             padding: 0,
             outline: 'none',
             background: bgStyle,
-            borderColor: borderStyle,
             color: 'transparent',
             boxShadow: shadowStyle,
             transform: isFocused ? 'scale(1.05)' : 'none',
@@ -183,7 +171,7 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
             boxSizing: 'border-box',
           }}
         />
-        {/* 顶层：显示用户已输入的字母（纯展示，不参与输入逻辑） */}
+        {/* 顶层：纯展示层，显示用户输入的字母 */}
         {userAnswer && (
           <div style={{
             position: 'absolute',
@@ -200,8 +188,7 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
             pointerEvents: 'none',
             zIndex: 1,
             borderRadius: '12px',
-            border: '2px solid',
-            borderColor: borderStyle,
+            border: `2px solid ${borderStyle}`,
             background: bgStyle,
             boxShadow: shadowStyle,
             transform: isFocused ? 'scale(1.05)' : 'none',
@@ -219,11 +206,9 @@ const BlankInput = forwardRef<HTMLInputElement, BlankInputProps>(({
       )}
     </div>
   )
-})
+}
 
-BlankInput.displayName = 'BlankInput'
-
-// ==================== 主应用组件 ====================
+// ==================== 主应用 ====================
 export default function Home() {
   const [words, setWords] = useState<Word[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -280,161 +265,68 @@ export default function Home() {
   }
 
   const handleAddWord = () => {
-    if (!newEnglish.trim() || !newChinese.trim()) {
-      alert('请填写完整的单词信息')
-      return
-    }
+    if (!newEnglish.trim() || !newChinese.trim()) { alert('请填写完整的单词信息'); return }
     setIsAdding(true)
     try {
       const exists = words.some(w => w.english.toLowerCase() === newEnglish.trim().toLowerCase() && w.id !== (editingWord?.id || ''))
-      if (exists) {
-        alert('该单词已存在')
-        setIsAdding(false)
-        return
-      }
-      const newWord: Word = {
-        id: Date.now().toString(),
-        english: newEnglish.trim(),
-        chinese: newChinese.trim(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
+      if (exists) { alert('该单词已存在'); setIsAdding(false); return }
+      const newWord: Word = { id: Date.now().toString(), english: newEnglish.trim(), chinese: newChinese.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
       saveWords([newWord, ...words])
       setNewEnglish('')
       setNewChinese('')
       alert('添加成功！')
       addInputRef.current?.focus()
-    } catch (error) {
-      alert('添加失败')
-    } finally {
-      setIsAdding(false)
-    }
+    } catch (error) { alert('添加失败') } finally { setIsAdding(false) }
   }
 
-  const startEdit = (word: Word) => {
-    setEditingWord(word)
-    setEditEnglish(word.english)
-    setEditChinese(word.chinese)
-  }
-
-  const cancelEdit = () => {
-    setEditingWord(null)
-    setEditEnglish('')
-    setEditChinese('')
-  }
+  const startEdit = (word: Word) => { setEditingWord(word); setEditEnglish(word.english); setEditChinese(word.chinese) }
+  const cancelEdit = () => { setEditingWord(null); setEditEnglish(''); setEditChinese('') }
 
   const saveEdit = () => {
-    if (!editEnglish.trim() || !editChinese.trim()) {
-      alert('请填写完整的单词信息')
-      return
-    }
-    
-    const exists = words.some(w => 
-      w.english.toLowerCase() === editEnglish.trim().toLowerCase() && w.id !== editingWord?.id
-    )
-    if (exists) {
-      alert('该单词已存在')
-      return
-    }
-    
-    const newWords = words.map(w => {
-      if (w.id === editingWord?.id) {
-        return {
-          ...w,
-          english: editEnglish.trim(),
-          chinese: editChinese.trim(),
-          updatedAt: new Date().toISOString()
-        }
-      }
-      return w
-    })
-    
+    if (!editEnglish.trim() || !editChinese.trim()) { alert('请填写完整的单词信息'); return }
+    const exists = words.some(w => w.english.toLowerCase() === editEnglish.trim().toLowerCase() && w.id !== editingWord?.id)
+    if (exists) { alert('该单词已存在'); return }
+    const newWords = words.map(w => w.id === editingWord?.id ? { ...w, english: editEnglish.trim(), chinese: editChinese.trim(), updatedAt: new Date().toISOString() } : w)
     saveWords(newWords)
-    setEditingWord(null)
-    setEditEnglish('')
-    setEditChinese('')
+    setEditingWord(null); setEditEnglish(''); setEditChinese('')
     alert('修改成功！')
   }
 
   const handleBatchAdd = () => {
-    if (!batchText.trim()) {
-      alert('请输入单词内容')
-      return
-    }
-
+    if (!batchText.trim()) { alert('请输入单词内容'); return }
     const lines = batchText.trim().split('\n')
     const wordList: Array<{english: string, chinese: string}> = []
-
     for (const line of lines) {
       const trimmedLine = line.trim()
       if (!trimmedLine) continue
-      
       let parts: string[] = []
-      
-      if (trimmedLine.includes('\t')) {
-        parts = trimmedLine.split('\t')
-      } else if (trimmedLine.includes('，')) {
-        parts = trimmedLine.split('，')
-      } else if (trimmedLine.includes(',')) {
-        parts = trimmedLine.split(',')
-      } else if (trimmedLine.includes('：')) {
-        parts = trimmedLine.split('：')
-      } else if (trimmedLine.includes(':')) {
-        parts = trimmedLine.split(':')
-      } else {
-        parts = trimmedLine.split(/\s+/)
-      }
-
+      if (trimmedLine.includes('\t')) parts = trimmedLine.split('\t')
+      else if (trimmedLine.includes('，')) parts = trimmedLine.split('，')
+      else if (trimmedLine.includes(',')) parts = trimmedLine.split(',')
+      else if (trimmedLine.includes('：')) parts = trimmedLine.split('：')
+      else if (trimmedLine.includes(':')) parts = trimmedLine.split(':')
+      else parts = trimmedLine.split(/\s+/)
       if (parts.length >= 2) {
         const english = parts[0].trim()
         const chinese = parts.slice(1).join(' ').trim()
-        if (english && chinese) {
-          wordList.push({ english, chinese })
-        }
+        if (english && chinese) wordList.push({ english, chinese })
       }
     }
-
-    if (wordList.length === 0) {
-      alert('未能识别到有效的单词格式\n\n格式示例：\napple 苹果\nbanana 香蕉')
-      return
-    }
-
-    let successCount = 0
-    let failCount = 0
+    if (wordList.length === 0) { alert('未能识别到有效的单词格式\n\n格式示例：\napple 苹果\nbanana 香蕉'); return }
+    let successCount = 0, failCount = 0
     const newWords = [...words]
-
     for (const word of wordList) {
       const exists = newWords.some(w => w.english.toLowerCase() === word.english.toLowerCase().trim())
-      if (exists) {
-        failCount++
-        continue
-      }
-      const newWord: Word = {
-        id: Date.now().toString() + Math.random(),
-        english: word.english.trim(),
-        chinese: word.chinese.trim(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-      newWords.unshift(newWord)
+      if (exists) { failCount++; continue }
+      newWords.unshift({ id: Date.now().toString() + Math.random(), english: word.english.trim(), chinese: word.chinese.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       successCount++
     }
-
-    saveWords(newWords)
-    setBatchText('')
-    
-    if (successCount > 0) {
-      alert(`成功添加 ${successCount} 个单词${failCount > 0 ? `\n${failCount} 个已存在或跳过` : ''}`)
-    } else {
-      alert('添加失败，所有单词可能都已存在')
-    }
+    saveWords(newWords); setBatchText('')
+    if (successCount > 0) alert(`成功添加 ${successCount} 个单词${failCount > 0 ? `\n${failCount} 个已存在或跳过` : ''}`)
+    else alert('添加失败，所有单词可能都已存在')
   }
 
-  const handleDeleteWord = (id: string) => {
-    if (confirm('确定要删除这个单词吗？')) {
-      saveWords(words.filter(w => w.id !== id))
-    }
-  }
+  const handleDeleteWord = (id: string) => { if (confirm('确定要删除这个单词吗？')) saveWords(words.filter(w => w.id !== id)) }
 
   const generateBlanks = (word: string): BlankPosition[] => {
     const letters = word.split('')
@@ -447,20 +339,11 @@ export default function Home() {
   }
 
   const startPractice = () => {
-    if (words.length === 0) {
-      alert('请先添加单词')
-      return
-    }
+    if (words.length === 0) { alert('请先添加单词'); return }
     const shuffledWords = [...words].sort(() => Math.random() - 0.5).slice(0, 10)
     const practiceData = shuffledWords.map(word => ({ word, blankPositions: generateBlanks(word.english), isCompleted: false, isCorrect: null }))
-    setPracticeWords(practiceData)
-    setCurrentWordIndex(0)
-    setIsPracticeMode(true)
-    setShowAnswer(false)
-    setCorrectCount(0)
-    setTotalCount(practiceData.length)
-    setShowResult(false)
-    setFocusedBlankIndex(0)
+    setPracticeWords(practiceData); setCurrentWordIndex(0); setIsPracticeMode(true); setShowAnswer(false)
+    setCorrectCount(0); setTotalCount(practiceData.length); setShowResult(false); setFocusedBlankIndex(0)
   }
 
   const checkAnswer = () => {
@@ -468,56 +351,52 @@ export default function Home() {
     const isCorrect = currentPractice.blankPositions.every(blank => blank.userAnswer.toLowerCase() === blank.char.toLowerCase())
     const newPracticeWords = [...practiceWords]
     newPracticeWords[currentWordIndex] = { ...currentPractice, isCompleted: true, isCorrect }
-    setPracticeWords(newPracticeWords)
-    setShowAnswer(true)
+    setPracticeWords(newPracticeWords); setShowAnswer(true)
     if (isCorrect) setCorrectCount(prev => prev + 1)
   }
 
   const nextWord = () => {
     if (currentWordIndex < practiceWords.length - 1) {
-      setCurrentWordIndex(prev => prev + 1)
-      setShowAnswer(false)
-      setFocusedBlankIndex(0)
+      setCurrentWordIndex(prev => prev + 1); setShowAnswer(false); setFocusedBlankIndex(0)
     } else {
-      saveHistory(totalCount, correctCount)
-      setShowResult(true)
-      setIsPracticeMode(false)
+      saveHistory(totalCount, correctCount); setShowResult(true); setIsPracticeMode(false)
     }
   }
 
   const retryCurrentWord = () => {
     const newPracticeWords = [...practiceWords]
     newPracticeWords[currentWordIndex] = { ...newPracticeWords[currentWordIndex], blankPositions: generateBlanks(newPracticeWords[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
-    setPracticeWords(newPracticeWords)
-    setShowAnswer(false)
-    setFocusedBlankIndex(0)
+    setPracticeWords(newPracticeWords); setShowAnswer(false); setFocusedBlankIndex(0)
   }
 
-  // 填空输入的回调函数
+  // 填空输入回调（使用 functional update 避免闭包陈旧问题）
   const handleBlankCharInput = useCallback((blankIndex: number, char: string) => {
     setPracticeWords(prev => {
-      const newPracticeWords = [...prev]
-      const currentPractice = newPracticeWords[currentWordIndex]
-      const newBlankPositions = [...currentPractice.blankPositions]
-      newBlankPositions[blankIndex] = { ...newBlankPositions[blankIndex], userAnswer: char }
-      newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-      return newPracticeWords
+      const newPW = [...prev]
+      const cp = newPW[currentWordIndex]
+      const newBP = [...cp.blankPositions]
+      newBP[blankIndex] = { ...newBP[blankIndex], userAnswer: char }
+      newPW[currentWordIndex] = { ...cp, blankPositions: newBP }
+      return newPW
     })
-    // 自动跳到下一格
-    const currentPractice = practiceWords[currentWordIndex]
-    if (blankIndex < currentPractice.blankPositions.length - 1) {
-      setFocusedBlankIndex(blankIndex + 1)
-    }
-  }, [currentWordIndex, practiceWords])
+    // 跳到下一格
+    setPracticeWords(prev => {
+      const blanks = prev[currentWordIndex].blankPositions
+      if (blankIndex < blanks.length - 1) {
+        setFocusedBlankIndex(blankIndex + 1)
+      }
+      return prev // 不修改，只是读取
+    })
+  }, [currentWordIndex])
 
   const handleBlankDeleteBack = useCallback((blankIndex: number) => {
     setPracticeWords(prev => {
-      const newPracticeWords = [...prev]
-      const currentPractice = newPracticeWords[currentWordIndex]
-      const newBlankPositions = [...currentPractice.blankPositions]
-      newBlankPositions[blankIndex] = { ...newBlankPositions[blankIndex], userAnswer: '' }
-      newPracticeWords[currentWordIndex] = { ...currentPractice, blankPositions: newBlankPositions }
-      return newPracticeWords
+      const newPW = [...prev]
+      const cp = newPW[currentWordIndex]
+      const newBP = [...cp.blankPositions]
+      newBP[blankIndex] = { ...newBP[blankIndex], userAnswer: '' }
+      newPW[currentWordIndex] = { ...cp, blankPositions: newBP }
+      return newPW
     })
   }, [currentWordIndex])
 
@@ -531,10 +410,9 @@ export default function Home() {
         {letters.map((char, index) => {
           const blankPos = blankPositions.find(bp => bp.index === index)
           if (blankPos) {
-            const currentBlankIndex = blankIndex++
+            const bi = blankIndex++
             const isAnswerCorrect = blankPos.userAnswer.toLowerCase() === blankPos.char.toLowerCase()
-            const isFocused = currentBlankIndex === focusedBlankIndex && !isCompleted
-            
+            const isFocused = bi === focusedBlankIndex && !isCompleted
             return (
               <BlankInput
                 key={index}
@@ -543,11 +421,12 @@ export default function Home() {
                 isFocused={isFocused}
                 isCompleted={isCompleted}
                 isAnswerCorrect={isAnswerCorrect}
-                onCharInput={(char) => handleBlankCharInput(currentBlankIndex, char)}
-                onDeleteBack={() => handleBlankDeleteBack(currentBlankIndex)}
-                onMoveLeft={() => { if (currentBlankIndex > 0) setFocusedBlankIndex(currentBlankIndex - 1) }}
-                onMoveRight={() => { if (currentBlankIndex < blankPositions.length - 1) setFocusedBlankIndex(currentBlankIndex + 1) }}
+                onCharInput={(c) => handleBlankCharInput(bi, c)}
+                onDeleteBack={() => handleBlankDeleteBack(bi)}
+                onMoveLeft={() => { if (bi > 0) setFocusedBlankIndex(bi - 1) }}
+                onMoveRight={() => { if (bi < blankPositions.length - 1) setFocusedBlankIndex(bi + 1) }}
                 onEnter={checkAnswer}
+                onFocusBlank={() => setFocusedBlankIndex(bi)}
               />
             )
           }
@@ -561,12 +440,7 @@ export default function Home() {
     )
   }
 
-  const exitPractice = () => {
-    setIsPracticeMode(false)
-    setPracticeWords([])
-    setCurrentWordIndex(0)
-    setShowResult(false)
-  }
+  const exitPractice = () => { setIsPracticeMode(false); setPracticeWords([]); setCurrentWordIndex(0); setShowResult(false) }
 
   const getAccuracy = () => totalCount === 0 ? 0 : Math.round((correctCount / totalCount) * 100)
   const getEncouragement = () => {
@@ -588,21 +462,11 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>英文单词</label>
-                <input
-                  type="text"
-                  value={editEnglish}
-                  onChange={(e) => setEditEnglish(e.target.value)}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }}
-                />
+                <input type="text" value={editEnglish} onChange={(e) => setEditEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>中文释义</label>
-                <input
-                  type="text"
-                  value={editChinese}
-                  onChange={(e) => setEditChinese(e.target.value)}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }}
-                />
+                <input type="text" value={editChinese} onChange={(e) => setEditChinese(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} />
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button onClick={cancelEdit} style={{ flex: 1, height: '48px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>取消</button>
@@ -777,24 +641,7 @@ export default function Home() {
                 <div style={{ padding: '16px' }}>
                   <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>📝 批量添加</h3>
                   <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>每行一个单词，格式：英文 中文</p>
-                  <textarea
-                    ref={batchInputRef}
-                    placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子"
-                    value={batchText}
-                    onChange={(e) => setBatchText(e.target.value)}
-                    style={{
-                      width: '100%',
-                      height: '150px',
-                      padding: '12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      boxSizing: 'border-box',
-                      resize: 'vertical',
-                      fontFamily: 'inherit',
-                      lineHeight: '1.6'
-                    }}
-                  />
+                  <textarea ref={batchInputRef} placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子" value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', height: '150px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
                   <button onClick={handleBatchAdd} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', marginTop: '12px' }}>📥 批量添加</button>
                 </div>
               </div>
@@ -817,9 +664,7 @@ export default function Home() {
                   <span style={{ fontSize: '12px', color: '#94a3b8' }}>{new Date(record.date).toLocaleDateString()}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600' }}>{record.correct}/{record.total}</span>
-                    <span style={{ fontSize: '12px', color: record.correct / record.total >= 0.8 ? '#059669' : record.correct / record.total >= 0.6 ? '#d97706' : '#dc2626' }}>
-                      {Math.round((record.correct / record.total) * 100)}%
-                    </span>
+                    <span style={{ fontSize: '12px', color: record.correct / record.total >= 0.8 ? '#059669' : record.correct / record.total >= 0.6 ? '#d97706' : '#dc2626' }}>{Math.round((record.correct / record.total) * 100)}%</span>
                   </div>
                 </div>
               ))}
