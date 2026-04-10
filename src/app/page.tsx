@@ -38,11 +38,11 @@ export default function Home() {
   const [isAdding, setIsAdding] = useState(false)
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list')
   const [addMode, setAddMode] = useState<'single' | 'batch'>('single')
-  
+
   const [editingWord, setEditingWord] = useState<Word | null>(null)
   const [editEnglish, setEditEnglish] = useState('')
   const [editChinese, setEditChinese] = useState('')
-  
+
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([])
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
   const [isPracticeMode, setIsPracticeMode] = useState(false)
@@ -55,8 +55,25 @@ export default function Home() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // ==================== 核心修复：一个隐藏 input 捕获所有键盘输入 ====================
+  // ==================== 核心修复：用 Ref 彻底避免闭包陷阱 ====================
+
+  // 用 ref 跟踪当前焦点格子 —— 永远读到最新值，不受 React 渲染时序影响
+  const focusedBlankIndexRef = useRef(0)
+
+  // 同时更新 ref 和 state（state 用于渲染高亮，ref 用于逻辑判断）
+  const updateFocusedBlank = useCallback((index: number) => {
+    focusedBlankIndexRef.current = index
+    setFocusedBlankIndex(index)
+  }, [])
+
+  // 隐藏 input 捕获键盘输入
   const hiddenInputRef = useRef<HTMLInputElement>(null)
+
+  // 上一次 input 的值长度，用来判断新增了几个字符
+  const prevInputLenRef = useRef(0)
+
+  // 正在处理的标志位，防止同一个字符被处理两次
+  const isProcessingRef = useRef(false)
 
   // 当 focusedBlankIndex 变化时，确保隐藏 input 获得焦点
   useEffect(() => {
@@ -65,68 +82,113 @@ export default function Home() {
     }
   }, [focusedBlankIndex, isPracticeMode, showAnswer, currentWordIndex])
 
+  // 安全地清空隐藏 input
+  const clearHiddenInput = useCallback(() => {
+    if (hiddenInputRef.current) {
+      hiddenInputRef.current.value = ''
+      prevInputLenRef.current = 0
+    }
+  }, [])
+
   // 隐藏 input 的 onChange：处理字符输入
   const handleHiddenInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // 防止重复处理
+    if (isProcessingRef.current) return
     if (!isPracticeMode || showAnswer) return
+
     const value = e.target.value
-    if (!value) return
-    const lastChar = value[value.length - 1]
-    // 立即清空隐藏 input
-    e.target.value = ''
-    if (!/^[a-zA-Z]$/.test(lastChar)) return
+    const prevLen = prevInputLenRef.current
+    const newLen = value.length
+
+    // 没有新增字符，跳过
+    if (newLen <= prevLen) {
+      // 可能是删除操作，同步更新 ref
+      prevInputLenRef.current = newLen
+      return
+    }
+
+    // 提取新增的字符（只取最后一个）
+    const newChar = value[newLen - 1]
+
+    // 更新已处理长度
+    prevInputLenRef.current = newLen
+
+    // 只接受英文字母
+    if (!/^[a-zA-Z]$/.test(newChar)) {
+      // 清掉非法字符
+      requestAnimationFrame(() => clearHiddenInput())
+      return
+    }
+
+    // 设置处理锁
+    isProcessingRef.current = true
+
+    // 从 ref 读取当前焦点（关键！不用闭包里的 focusedBlankIndex）
+    const fi = focusedBlankIndexRef.current
+
+    // 读取当前单词的 blank 信息（也用 ref 避免闭包问题）
+    const wordIdx = currentWordIndexRef.current
 
     setPracticeWords(prev => {
-      const cp = prev[currentWordIndex]
-      if (!cp || cp.isCompleted) return prev
+      const cp = prev[wordIdx]
+      if (!cp || cp.isCompleted) {
+        isProcessingRef.current = false
+        return prev
+      }
       const blanks = cp.blankPositions
-      const fi = focusedBlankIndex
-      if (fi < 0 || fi >= blanks.length) return prev
+      if (fi < 0 || fi >= blanks.length) {
+        isProcessingRef.current = false
+        return prev
+      }
 
       const expected = blanks[fi].char
-      const matched = expected === expected.toUpperCase() ? lastChar.toUpperCase() : lastChar.toLowerCase()
+      const matched = expected === expected.toUpperCase() ? newChar.toUpperCase() : newChar.toLowerCase()
 
       const npw = [...prev]
       const nbp = [...blanks]
       nbp[fi] = { ...nbp[fi], userAnswer: matched }
-      npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+      npw[wordIdx] = { ...cp, blankPositions: nbp }
+
+      // 在下一个 tick 清空 input 并跳格
+      setTimeout(() => {
+        clearHiddenInput()
+        isProcessingRef.current = false
+
+        // 如果还有下一个格子，跳过去
+        if (fi < blanks.length - 1) {
+          updateFocusedBlank(fi + 1)
+        }
+      }, 0)
+
       return npw
     })
+  }, [isPracticeMode, showAnswer, updateFocusedBlank, clearHiddenInput])
 
-    // 跳到下一格
-    setPracticeWords(prev => {
-      const blanks = prev[currentWordIndex]?.blankPositions
-      if (blanks && focusedBlankIndex < blanks.length - 1) {
-        setFocusedBlankIndex(focusedBlankIndex + 1)
-      }
-      return prev
-    })
-  }, [isPracticeMode, showAnswer, currentWordIndex, focusedBlankIndex])
-
-  // 隐藏 input 的 onKeyDown：处理退格/方向键/回车
+  // 隐藏 input 的 onKeyDown：处理退格/方向键/回车（桌面端用）
   const handleHiddenInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!isPracticeMode || showAnswer) return
 
     if (e.key === 'Backspace') {
       e.preventDefault()
+      const fi = focusedBlankIndexRef.current
+      const wordIdx = currentWordIndexRef.current
+
       setPracticeWords(prev => {
-        const cp = prev[currentWordIndex]
+        const cp = prev[wordIdx]
         if (!cp || cp.isCompleted) return prev
         const blanks = cp.blankPositions
-        const fi = focusedBlankIndex
         if (fi < 0 || fi >= blanks.length) return prev
 
         const npw = [...prev]
         const nbp = [...blanks]
         if (nbp[fi].userAnswer !== '') {
-          // 当前格有字母，清除
           nbp[fi] = { ...nbp[fi], userAnswer: '' }
-          npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+          npw[wordIdx] = { ...cp, blankPositions: nbp }
           return npw
         } else if (fi > 0) {
-          // 当前格为空，跳到上一格并清除
           nbp[fi - 1] = { ...nbp[fi - 1], userAnswer: '' }
-          npw[currentWordIndex] = { ...cp, blankPositions: nbp }
-          setFocusedBlankIndex(fi - 1)
+          npw[wordIdx] = { ...cp, blankPositions: nbp }
+          updateFocusedBlank(fi - 1)
           return npw
         }
         return prev
@@ -134,25 +196,42 @@ export default function Home() {
       return
     }
 
-    if (e.key === 'ArrowLeft') { e.preventDefault(); if (focusedBlankIndex > 0) setFocusedBlankIndex(focusedBlankIndex - 1); return }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      if (focusedBlankIndexRef.current > 0) updateFocusedBlank(focusedBlankIndexRef.current - 1)
+      return
+    }
     if (e.key === 'ArrowRight') {
       e.preventDefault()
+      const wordIdx = currentWordIndexRef.current
       setPracticeWords(prev => {
-        const blanks = prev[currentWordIndex]?.blankPositions
-        if (blanks && focusedBlankIndex < blanks.length - 1) setFocusedBlankIndex(focusedBlankIndex + 1)
+        const blanks = prev[wordIdx]?.blankPositions
+        if (blanks && focusedBlankIndexRef.current < blanks.length - 1) {
+          updateFocusedBlank(focusedBlankIndexRef.current + 1)
+        }
         return prev
       })
       return
     }
     if (e.key === 'Enter') { e.preventDefault(); checkAnswer(); return }
-  }, [isPracticeMode, showAnswer, currentWordIndex, focusedBlankIndex])
+  }, [isPracticeMode, showAnswer, updateFocusedBlank])
+
+  // currentWordIndex 也用 ref 拷贝一份，避免闭包读到旧值
+  const currentWordIndexRef = useRef(0)
+  useEffect(() => {
+    currentWordIndexRef.current = currentWordIndex
+  }, [currentWordIndex])
 
   // 点击某个格子时，设置焦点并聚焦隐藏 input
   const handleCellClick = useCallback((blankIndex: number) => {
+    // 立即更新 ref（同步）
+    focusedBlankIndexRef.current = blankIndex
     setFocusedBlankIndex(blankIndex)
-    // 稍后聚焦以确保 state 已更新
-    setTimeout(() => { hiddenInputRef.current?.focus() }, 0)
-  }, [])
+    // 清空隐藏 input，防止残留值干扰
+    clearHiddenInput()
+    // 稍后聚焦
+    setTimeout(() => { hiddenInputRef.current?.focus() }, 50)
+  }, [clearHiddenInput])
 
   // ==================== 隐藏 input END ====================
 
@@ -251,7 +330,14 @@ export default function Home() {
     const sw = [...words].sort(() => Math.random() - 0.5).slice(0, 10)
     const pd = sw.map(word => ({ word, blankPositions: generateBlanks(word.english), isCompleted: false, isCorrect: null }))
     setPracticeWords(pd); setCurrentWordIndex(0); setIsPracticeMode(true); setShowAnswer(false)
-    setCorrectCount(0); setTotalCount(pd.length); setShowResult(false); setFocusedBlankIndex(0)
+    setCorrectCount(0); setTotalCount(pd.length); setShowResult(false)
+    // 重置焦点
+    focusedBlankIndexRef.current = 0
+    setFocusedBlankIndex(0)
+    // 清空隐藏 input
+    clearHiddenInput()
+    isProcessingRef.current = false
+    prevInputLenRef.current = 0
   }
 
   const checkAnswer = () => {
@@ -266,7 +352,14 @@ export default function Home() {
 
   const nextWord = () => {
     if (currentWordIndex < practiceWords.length - 1) {
-      setCurrentWordIndex(prev => prev + 1); setShowAnswer(false); setFocusedBlankIndex(0)
+      setCurrentWordIndex(prev => prev + 1); setShowAnswer(false)
+      // 重置焦点到第一个空格
+      focusedBlankIndexRef.current = 0
+      setFocusedBlankIndex(0)
+      // 清空隐藏 input，防止上一个单词的残留值触发 onChange
+      clearHiddenInput()
+      isProcessingRef.current = false
+      prevInputLenRef.current = 0
     } else {
       saveHistory(totalCount, correctCount); setShowResult(true); setIsPracticeMode(false)
     }
@@ -275,7 +368,14 @@ export default function Home() {
   const retryCurrentWord = () => {
     const npw = [...practiceWords]
     npw[currentWordIndex] = { ...npw[currentWordIndex], blankPositions: generateBlanks(npw[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
-    setPracticeWords(npw); setShowAnswer(false); setFocusedBlankIndex(0)
+    setPracticeWords(npw); setShowAnswer(false)
+    // 重置焦点
+    focusedBlankIndexRef.current = 0
+    setFocusedBlankIndex(0)
+    // 清空隐藏 input
+    clearHiddenInput()
+    isProcessingRef.current = false
+    prevInputLenRef.current = 0
   }
 
   const exitPractice = () => { setIsPracticeMode(false); setPracticeWords([]); setCurrentWordIndex(0); setShowResult(false) }
@@ -325,7 +425,6 @@ export default function Home() {
 
             return (
               <div key={`b-${currentWordIndex}-${bi}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                {/* 格子本身就是一个 div，点击时设置焦点 */}
                 <div
                   onClick={() => !isCompleted && handleCellClick(bi)}
                   style={{
@@ -428,7 +527,7 @@ export default function Home() {
     const cp = practiceWords[currentWordIndex]
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
-        {/* ========== 一个隐藏的 input 捕获所有键盘输入 ========== */}
+        {/* ========== 隐藏 input：捕获所有键盘输入 ========== */}
         <input
           ref={hiddenInputRef}
           type="text"
@@ -437,17 +536,21 @@ export default function Home() {
           autoCorrect="off"
           spellCheck={false}
           autoComplete="off"
+          autocorrect="off"
+          autocapitalize="off"
           onChange={handleHiddenInputChange}
           onKeyDown={handleHiddenInputKeyDown}
           style={{
-            position: 'absolute',
-            left: 0, top: 0,
-            width: '1px', height: '1px',
-            opacity: 0.01,
-            fontSize: '16px', // 防止 iOS 缩放
+            position: 'fixed',
+            left: '-9999px',
+            top: '0',
+            width: '1px',
+            height: '1px',
+            opacity: 0,
+            fontSize: '16px',
             border: 'none',
             outline: 'none',
-            zIndex: -1,
+            pointerEvents: 'none',
           }}
         />
         {/* ========== 隐藏 input END ========== */}
@@ -576,7 +679,7 @@ export default function Home() {
                 <div style={{ padding: '16px' }}>
                   <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>📝 批量添加</h3>
                   <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>每行一个单词，格式：英文 中文</p>
-                  <textarea ref={batchInputRef} placeholder="apple 苹果&#10;banana 香蕉&#10;orange 橙子" value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', height: '150px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
+                  <textarea ref={batchInputRef} placeholder={"apple 苹果\nbanana 香蕉\norange 橙子"} value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', height: '150px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
                   <button onClick={handleBatchAdd} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', marginTop: '12px' }}>📥 批量添加</button>
                 </div>
               </div>
