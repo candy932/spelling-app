@@ -432,8 +432,6 @@ export default function Home() {
                   inputMode="text"
                   autoCapitalize="off"
                   autoCorrect="off"
-                  autocorrect="off"
-                  autocapitalize="off"
                   spellCheck={false}
                   autoComplete="off"
                   readOnly={isCompleted || showAnswer}
