@@ -55,18 +55,13 @@ export default function Home() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const batchInputRef = useRef<HTMLTextAreaElement>(null)
 
-  // ==================== v7 å…¨æ–°æ–¹æ¡ˆï¼šæ¯ä¸ªæ ¼å­ä¸€ä¸ªç‹¬ç«‹ input ====================
-  // æ¯ä¸ª blank å¯¹åº”ä¸€ä¸ªçœŸæ­£çš„ <input maxLength={1}> å…ƒç´ 
-  // æµè§ˆå™¨åŸç”Ÿä¿è¯æœ€å¤šè¾“å…¥1ä¸ªå­—ç¬¦ï¼Œä¸éœ€è¦æ‰‹åŠ¨æ¸…ç©º
-  // æ²¡æœ‰ hidden inputï¼Œæ²¡æœ‰é—­åŒ…é™·é˜±ï¼Œæ²¡æœ‰äº‹ä»¶çº§è”
+  // ========== ĞŞ¸´°æ£º´¿ÊÜ¿Ø input£¬ÎŞ defaultValue ==========
 
-  // å­˜å‚¨æ¯ä¸ª blank input çš„ DOM å¼•ç”¨
+  // ´æ´¢ DOM ÒıÓÃ
   const blankInputRefs = useRef<(HTMLInputElement | null)[]>([])
-
-  // ä¸­æ–‡è¾“å…¥æ³•è¿½è¸ª
   const isComposingRef = useRef(false)
 
-  // åˆ‡æ¢å•è¯æ—¶ï¼Œè‡ªåŠ¨èšç„¦ç¬¬ä¸€ä¸ªç©ºæ ¼å­
+  // ÇĞ»»µ¥´ÊÊ±£¬×Ô¶¯¾Û½¹µÚÒ»¸ö¿Õ¸ñ×Ó
   useEffect(() => {
     if (isPracticeMode && !showAnswer) {
       const timer = setTimeout(() => {
@@ -76,23 +71,32 @@ export default function Home() {
     }
   }, [currentWordIndex, isPracticeMode, showAnswer])
 
-  // å¤„ç†æŸä¸ª blank input æ”¶åˆ°è¾“å…¥
-  const handleBlankInput = useCallback((blankIdx: number, totalBlanks: number) => {
-    return (e: React.FormEvent<HTMLInputElement>) => {
-      // ä¸­æ–‡è¾“å…¥æ³•æ­£åœ¨ç»„åˆä¸­ï¼Œå¿½ç•¥
+  /**
+   * ¡¾ĞŞ¸´ºËĞÄ¡¿ÓÃ onChange + ´¿ setState£¬²»ÔÙÖ±½Ó²Ù×÷ DOM
+   *
+   * Ö®Ç°µÄÎÊÌâ£º
+   *   1. onInput ÀïÖ±½ÓĞ´ input.value = clean£¬ÈÆ¹ı React
+   *   2. defaultValue + Ìõ¼şĞÔ value µ¼ÖÂ·ÇÊÜ¿Ø?ÊÜ¿ØÇĞ»»
+   *   3. setState Ê¹ÓÃ±Õ°üÖĞµÄ currentWordIndex ¿ÉÄÜÊÇ¾ÉÖµ
+   *
+   * ĞŞ¸´£º
+   *   1. ¸ÄÓÃ onChange£¬Ö»Í¨¹ı setState ¸üĞÂ
+   *   2. È¥µô defaultValue£¬Ê¼ÖÕÓÃ value={blankPos.userAnswer} ÊÜ¿Ø
+   *   3. Ê¹ÓÃº¯ÊıÊ½ setState (prev => ...) ±ÜÃâ±Õ°ü¾ÉÖµ
+   */
+  const handleBlankChange = useCallback((blankIdx: number, totalBlanks: number) => {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      // ÖĞÎÄÊäÈë·¨ÕıÔÚ×éºÏÖĞ£¬ºöÂÔ
       if (isComposingRef.current) return
       if (showAnswer) return
 
-      const input = e.currentTarget as HTMLInputElement
-      const raw = input.value
-
-      // æå–æœ€åä¸€ä¸ªè‹±æ–‡å­—æ¯ï¼ˆå¦‚æœæœ‰çš„è¯ï¼‰
+      const raw = e.target.value
+      // ÌáÈ¡×îºóÒ»¸öÓ¢ÎÄ×ÖÄ¸
       const match = raw.match(/[a-zA-Z]/)
       const letter = match ? match[match.length - 1] : ''
 
       if (!letter) {
-        // è¾“å…¥ä¸ºç©ºæˆ–éå­—æ¯ï¼ˆå¯èƒ½æ˜¯é€€æ ¼é”®æ¸…ç©ºäº†ï¼‰
-        // æ›´æ–° state æ¸…ç©ºè¿™ä¸ªæ ¼å­
+        // ÊäÈëÎª¿Õ»ò·Ç×ÖÄ¸£¨¿ÉÄÜÊÇÍË¸ñ¼üÇå¿ÕÁË£©
         setPracticeWords(prev => {
           const cp = prev[currentWordIndex]
           if (!cp || cp.isCompleted) return prev
@@ -105,8 +109,7 @@ export default function Home() {
         return
       }
 
-      // æœ‰ä¸€ä¸ªæœ‰æ•ˆå­—æ¯ï¼Œå†™å…¥å½“å‰æ ¼å­
-      // æ ¹æ®æœŸæœ›å­—ç¬¦çš„å¤§å°å†™æ¥å†³å®š
+      // ÓĞÒ»¸öÓĞĞ§×ÖÄ¸£¬Ğ´Èëµ±Ç°¸ñ×Ó£¨¸ù¾İÆÚÍû×Ö·û´óĞ¡Ğ´Æ¥Åä£©
       setPracticeWords(prev => {
         const cp = prev[currentWordIndex]
         if (!cp || cp.isCompleted) return prev
@@ -121,23 +124,16 @@ export default function Home() {
         return npw
       })
 
-      // å¦‚æœè¾“å…¥äº†éå­—æ¯å­—ç¬¦æ··åœ¨é‡Œé¢ï¼Œæ¸…ç†ä¸€ä¸‹ input
-      const clean = /^[a-zA-Z]$/.test(raw) ? raw : letter
-      if (input.value !== clean) {
-        input.value = clean
-      }
-
-      // è‡ªåŠ¨è·³åˆ°ä¸‹ä¸€ä¸ªç©ºæ ¼å­
+      // ×Ô¶¯Ìøµ½ÏÂÒ»¸ö¿Õ¸ñ
       if (blankIdx < totalBlanks - 1) {
-        const timer = setTimeout(() => {
+        setTimeout(() => {
           blankInputRefs.current[blankIdx + 1]?.focus()
         }, 80)
-        return () => clearTimeout(timer)
       }
     }
   }, [currentWordIndex, showAnswer])
 
-  // æ¡Œé¢ç«¯ï¼šé€€æ ¼é”®ã€æ–¹å‘é”®ã€å›è½¦
+  // ¼üÅÌ£ºÍË¸ñ¼ü¡¢·½Ïò¼ü¡¢»Ø³µ
   const handleBlankKeyDown = useCallback((blankIdx: number, totalBlanks: number) => {
     return (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (showAnswer) return
@@ -145,12 +141,12 @@ export default function Home() {
       if (e.key === 'Backspace') {
         const input = blankInputRefs.current[blankIdx]
         if (input && input.value === '' && blankIdx > 0) {
-          // å½“å‰æ ¼å­å·²ç»ç©ºäº†ï¼Œè·³åˆ°ä¸Šä¸€æ ¼å¹¶æ¸…ç©º
+          // µ±Ç°¸ñ×ÓÒÑ¿Õ£¬Ìøµ½ÉÏÒ»¸ñ²¢Çå¿Õ
           e.preventDefault()
           const prevInput = blankInputRefs.current[blankIdx - 1]
           if (prevInput) {
             prevInput.focus()
-            prevInput.value = ''
+            // Í¨¹ı setState Çå¿Õ
             setPracticeWords(prev => {
               const cp = prev[currentWordIndex]
               if (!cp || cp.isCompleted) return prev
@@ -185,27 +181,24 @@ export default function Home() {
     }
   }, [currentWordIndex, showAnswer])
 
-  // ç‚¹å‡»æŸä¸ªæ ¼å­æ—¶èšç„¦å¯¹åº”çš„ input
+  // µã»÷Ä³¸ö¸ñ×ÓÊ±¼ÇÂ¼½¹µã
   const handleBlankFocus = useCallback((blankIdx: number) => {
     return () => {
       setFocusedBlankIndex(blankIdx)
     }
   }, [])
 
-  // ä¸­æ–‡è¾“å…¥æ³•äº‹ä»¶
+  // ÖĞÎÄÊäÈë·¨ÊÂ¼ş
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true
   }, [])
 
-  const handleCompositionEnd = useCallback((blankIdx: number) => {
+  const handleCompositionEnd = useCallback((blankIdx: number, totalBlanks: number) => {
     return (e: React.CompositionEvent<HTMLInputElement>) => {
       isComposingRef.current = false
-      const input = e.currentTarget as HTMLInputElement
-      const val = input.value
-      // å¦‚æœæœ€ç»ˆå€¼ä¸æ˜¯è‹±æ–‡å­—æ¯ï¼Œæ¸…ç©º
+      const val = e.currentTarget.value
+      // Èç¹û×îÖÕÖµ²»ÊÇÓ¢ÎÄ×ÖÄ¸£¬Çå¿Õ
       if (!/^[a-zA-Z]$/.test(val)) {
-        input.value = ''
-        // ä¹Ÿæ›´æ–° state
         setPracticeWords(prev => {
           const cp = prev[currentWordIndex]
           if (!cp || cp.isCompleted) return prev
@@ -215,24 +208,39 @@ export default function Home() {
           npw[currentWordIndex] = { ...cp, blankPositions: nbp }
           return npw
         })
-      }
-      // å¦‚æœæ˜¯è‹±æ–‡å­—æ¯ï¼Œè§¦å‘æ­£å¸¸å¤„ç†
-      else {
-        // æ¨¡æ‹Ÿ onInput
-        const fakeEvent = { currentTarget: input } as React.FormEvent<HTMLInputElement>
-        handleBlankInput(blankIdx, 99)(fakeEvent)
+      } else {
+        // Èç¹ûÊÇÓ¢ÎÄ×ÖÄ¸£¬Õı³£´¦Àí
+        const letter = val.match(/[a-zA-Z]/)![0]
+        setPracticeWords(prev => {
+          const cp = prev[currentWordIndex]
+          if (!cp || cp.isCompleted) return prev
+          const expected = cp.blankPositions[blankIdx].char
+          const matched = expected === expected.toUpperCase()
+            ? letter.toUpperCase()
+            : letter.toLowerCase()
+          const nbp = [...cp.blankPositions]
+          nbp[blankIdx] = { ...nbp[blankIdx], userAnswer: matched }
+          const npw = [...prev]
+          npw[currentWordIndex] = { ...cp, blankPositions: nbp }
+          return npw
+        })
+        if (blankIdx < totalBlanks - 1) {
+          setTimeout(() => {
+            blankInputRefs.current[blankIdx + 1]?.focus()
+          }, 80)
+        }
       }
     }
-  }, [currentWordIndex, handleBlankInput])
+  }, [currentWordIndex])
 
-  // ==================== v7 END ====================
+  // ========== Êı¾İ¼ÓÔØ & ±£´æ ==========
 
   const loadWords = useCallback(() => {
     try {
       const savedWords = localStorage.getItem('spellingWords')
       if (savedWords) setWords(JSON.parse(savedWords))
     } catch (error) {
-      console.error('è·å–å•è¯å¤±è´¥')
+      console.error('»ñÈ¡µ¥´ÊÊ§°Ü')
     } finally {
       setIsLoading(false)
     }
@@ -257,55 +265,55 @@ export default function Home() {
   }
 
   const handleAddWord = () => {
-    if (!newEnglish.trim() || !newChinese.trim()) { alert('è¯·å¡«å†™å®Œæ•´çš„å•è¯ä¿¡æ¯'); return }
+    if (!newEnglish.trim() || !newChinese.trim()) { alert('ÇëÌîĞ´ÍêÕûµÄµ¥´ÊĞÅÏ¢'); return }
     setIsAdding(true)
     try {
       const exists = words.some(w => w.english.toLowerCase() === newEnglish.trim().toLowerCase() && w.id !== (editingWord?.id || ''))
-      if (exists) { alert('è¯¥å•è¯å·²å­˜åœ¨'); setIsAdding(false); return }
+      if (exists) { alert('¸Ãµ¥´ÊÒÑ´æÔÚ'); setIsAdding(false); return }
       const newWord: Word = { id: Date.now().toString(), english: newEnglish.trim(), chinese: newChinese.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
       saveWords([newWord, ...words]); setNewEnglish(''); setNewChinese('')
-      alert('æ·»åŠ æˆåŠŸï¼'); addInputRef.current?.focus()
-    } catch (error) { alert('æ·»åŠ å¤±è´¥') } finally { setIsAdding(false) }
+      alert('Ìí¼Ó³É¹¦£¡'); addInputRef.current?.focus()
+    } catch (error) { alert('Ìí¼ÓÊ§°Ü') } finally { setIsAdding(false) }
   }
 
   const startEdit = (word: Word) => { setEditingWord(word); setEditEnglish(word.english); setEditChinese(word.chinese) }
   const cancelEdit = () => { setEditingWord(null); setEditEnglish(''); setEditChinese('') }
 
   const saveEdit = () => {
-    if (!editEnglish.trim() || !editChinese.trim()) { alert('è¯·å¡«å†™å®Œæ•´çš„å•è¯ä¿¡æ¯'); return }
+    if (!editEnglish.trim() || !editChinese.trim()) { alert('ÇëÌîĞ´ÍêÕûµÄµ¥´ÊĞÅÏ¢'); return }
     const exists = words.some(w => w.english.toLowerCase() === editEnglish.trim().toLowerCase() && w.id !== editingWord?.id)
-    if (exists) { alert('è¯¥å•è¯å·²å­˜åœ¨'); return }
+    if (exists) { alert('¸Ãµ¥´ÊÒÑ´æÔÚ'); return }
     const newWords = words.map(w => w.id === editingWord?.id ? { ...w, english: editEnglish.trim(), chinese: editChinese.trim(), updatedAt: new Date().toISOString() } : w)
-    saveWords(newWords); setEditingWord(null); setEditEnglish(''); setEditChinese(''); alert('ä¿®æ”¹æˆåŠŸï¼')
+    saveWords(newWords); setEditingWord(null); setEditEnglish(''); setEditChinese(''); alert('ĞŞ¸Ä³É¹¦£¡')
   }
 
   const handleBatchAdd = () => {
-    if (!batchText.trim()) { alert('è¯·è¾“å…¥å•è¯å†…å®¹'); return }
+    if (!batchText.trim()) { alert('ÇëÊäÈëµ¥´ÊÄÚÈİ'); return }
     const lines = batchText.trim().split('\n')
     const wordList: Array<{ english: string; chinese: string }> = []
     for (const line of lines) {
       const tl = line.trim(); if (!tl) continue
       let parts: string[] = []
       if (tl.includes('\t')) parts = tl.split('\t')
-      else if (tl.includes('ï¼Œ')) parts = tl.split('ï¼Œ')
+      else if (tl.includes('£º')) parts = tl.split('£º')
       else if (tl.includes(',')) parts = tl.split(',')
-      else if (tl.includes('ï¼š')) parts = tl.split('ï¼š')
+      else if (tl.includes('£¬')) parts = tl.split('£¬')
       else if (tl.includes(':')) parts = tl.split(':')
       else parts = tl.split(/\s+/)
       if (parts.length >= 2) { const en = parts[0].trim(), cn = parts.slice(1).join(' ').trim(); if (en && cn) wordList.push({ english: en, chinese: cn }) }
     }
-    if (wordList.length === 0) { alert('æœªèƒ½è¯†åˆ«åˆ°æœ‰æ•ˆçš„å•è¯æ ¼å¼\n\næ ¼å¼ç¤ºä¾‹ï¼š\napple è‹¹æœ\nbanana é¦™è•‰'); return }
+    if (wordList.length === 0) { alert('Î´ÄÜÊ¶±ğµ½ÓĞĞ§µÄµ¥´Ê¸ñÊ½\n\n¸ñÊ½Ê¾Àı£º\napple Æ»¹û\nbanana Ïã½¶'); return }
     let ok = 0, fail = 0; const nw = [...words]
     for (const w of wordList) {
       if (nw.some(x => x.english.toLowerCase() === w.english.toLowerCase().trim())) { fail++; continue }
       nw.unshift({ id: Date.now().toString() + Math.random(), english: w.english.trim(), chinese: w.chinese.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); ok++
     }
     saveWords(nw); setBatchText('')
-    if (ok > 0) alert(`æˆåŠŸæ·»åŠ  ${ok} ä¸ªå•è¯${fail > 0 ? `\n${fail} ä¸ªå·²å­˜åœ¨æˆ–è·³è¿‡` : ''}`)
-    else alert('æ·»åŠ å¤±è´¥ï¼Œæ‰€æœ‰å•è¯å¯èƒ½éƒ½å·²å­˜åœ¨')
+    if (ok > 0) alert(`³É¹¦Ìí¼Ó ${ok} ¸öµ¥´Ê${fail > 0 ? `\n${fail} ¸öÒÑ´æÔÚ»òÌø¹ı` : ''}`)
+    else alert('Ìí¼ÓÊ§°Ü£¬ËùÓĞµ¥´Ê¿ÉÄÜ¶¼ÒÑ´æÔÚ')
   }
 
-  const handleDeleteWord = (id: string) => { if (confirm('ç¡®å®šè¦åˆ é™¤è¿™ä¸ªå•è¯å—ï¼Ÿ')) saveWords(words.filter(w => w.id !== id)) }
+  const handleDeleteWord = (id: string) => { if (confirm('È·¶¨ÒªÉ¾³ıÕâ¸öµ¥´ÊÂğ£¿')) saveWords(words.filter(w => w.id !== id)) }
 
   const generateBlanks = (word: string): BlankPosition[] => {
     const letters = word.split('')
@@ -318,7 +326,7 @@ export default function Home() {
   }
 
   const startPractice = () => {
-    if (words.length === 0) { alert('è¯·å…ˆæ·»åŠ å•è¯'); return }
+    if (words.length === 0) { alert('ÇëÏÈÌí¼Óµ¥´Ê'); return }
     const sw = [...words].sort(() => Math.random() - 0.5).slice(0, 10)
     const pd = sw.map(word => ({ word, blankPositions: generateBlanks(word.english), isCompleted: false, isCorrect: null }))
     setPracticeWords(pd); setCurrentWordIndex(0); setIsPracticeMode(true); setShowAnswer(false)
@@ -327,32 +335,52 @@ export default function Home() {
     blankInputRefs.current = []
   }
 
-  const checkAnswer = () => {
-    const cp = practiceWords[currentWordIndex]
-    if (!cp) return
+  /**
+   * ¡¾ĞŞ¸´¡¿checkAnswer Ê¹ÓÃº¯ÊıÊ½ setState
+   *
+   * Ö®Ç°£ºÖ±½Ó»ùÓÚ±Õ°üÖĞµÄ practiceWords ¹¹½¨ npw
+   *       ¡ú Èç¹û handleBlankInput µÄ setState »¹Ã»±»´¦Àí£¬practiceWords ÊÇ¾ÉÖµ
+   *       ¡ú »ùÓÚ¾ÉÖµ¹¹½¨µÄĞÂÊı×é»á¶ªÊ§×îºóÒ»´ÎÊäÈë
+   *
+   * ĞŞ¸´£ºÓÃ setPracticeWords(prev => ...) È·±£»ùÓÚ×îĞÂ state
+   */
+  const checkAnswer = useCallback(() => {
+    setPracticeWords(prev => {
+      const cp = prev[currentWordIndex]
+      if (!cp) return prev
 
-    // å…³é”®ï¼šç›´æ¥ä» DOM input è¯»å–å®é™…å€¼ï¼Œä¸èµ° state
-    // è¿™æ ·å³ä½¿ React state è¿˜æ²¡æ›´æ–°ï¼Œä¹Ÿèƒ½æ‹¿åˆ°æœ€æ–°çš„è¾“å…¥
-    const actualAnswers = cp.blankPositions.map((bp, i) => {
-      const input = blankInputRefs.current[i]
-      if (!input) return ''
-      const val = input.value
-      const match = val.match(/[a-zA-Z]/)
-      if (!match) return ''
-      const letter = match[0]
-      return bp.char === bp.char.toUpperCase() ? letter.toUpperCase() : letter.toLowerCase()
+      // ´Ó DOM ¶ÁÈ¡Êµ¼ÊÊäÈëÖµ£¨È·±£ÄÃµ½×îĞÂÓÃ»§ÊäÈë£©
+      const actualAnswers = cp.blankPositions.map((bp, i) => {
+        const input = blankInputRefs.current[i]
+        if (!input) return ''
+        const val = input.value
+        const match = val.match(/[a-zA-Z]/)
+        if (!match) return ''
+        const letter = match[0]
+        return bp.char === bp.char.toUpperCase() ? letter.toUpperCase() : letter.toLowerCase()
+      })
+
+      const ok = actualAnswers.every((ans, i) => ans.toLowerCase() === cp.blankPositions[i].char.toLowerCase())
+
+      // »ùÓÚ×îĞÂ prev ¹¹½¨£¬²»»á¶ªÊ§ÖĞ¼ä¸üĞÂ
+      const nbp = cp.blankPositions.map((bp, i) => ({ ...bp, userAnswer: actualAnswers[i] }))
+      const npw = [...prev]
+      npw[currentWordIndex] = { ...cp, blankPositions: nbp, isCompleted: true, isCorrect: ok }
+      return npw
     })
 
-    const ok = actualAnswers.every((ans, i) => ans.toLowerCase() === cp.blankPositions[i].char.toLowerCase())
-
-    // ç”¨å®é™… DOM å€¼æ›´æ–° state
-    const nbp = cp.blankPositions.map((bp, i) => ({ ...bp, userAnswer: actualAnswers[i] }))
-    const npw = [...practiceWords]
-    npw[currentWordIndex] = { ...cp, blankPositions: nbp, isCompleted: true, isCorrect: ok }
-    setPracticeWords(npw)
     setShowAnswer(true)
-    if (ok) setCorrectCount(prev => prev + 1)
-  }
+
+    // ¼ÆËãÕıÈ·ÊıÒ²ĞèÒª»ùÓÚ×îĞÂ state£¬ÓÃ ref »òÕßÔÚ setState »Øµ÷ÖĞ´¦Àí
+    // ÕâÀïÓÃ setTimeout È·±£ÔÚ setState Íê³Éºó¶ÁÈ¡
+    setPracticeWords(prev => {
+      const cp = prev[currentWordIndex]
+      if (cp && cp.isCorrect) {
+        setCorrectCount(c => c + 1)
+      }
+      return prev
+    })
+  }, [currentWordIndex])
 
   const nextWord = () => {
     if (currentWordIndex < practiceWords.length - 1) {
@@ -365,16 +393,24 @@ export default function Home() {
   }
 
   const retryCurrentWord = () => {
-    const npw = [...practiceWords]
-    npw[currentWordIndex] = { ...npw[currentWordIndex], blankPositions: generateBlanks(npw[currentWordIndex].word.english), isCompleted: false, isCorrect: null }
-    setPracticeWords(npw); setShowAnswer(false)
+    setPracticeWords(prev => {
+      const npw = [...prev]
+      npw[currentWordIndex] = {
+        ...npw[currentWordIndex],
+        blankPositions: generateBlanks(npw[currentWordIndex].word.english),
+        isCompleted: false,
+        isCorrect: null
+      }
+      return npw
+    })
+    setShowAnswer(false)
     setFocusedBlankIndex(0)
     blankInputRefs.current = []
   }
 
   const exitPractice = () => { setIsPracticeMode(false); setPracticeWords([]); setCurrentWordIndex(0); setShowResult(false) }
 
-  // æ¸²æŸ“å¡«ç©ºå•è¯çš„æ ¼å­æ ·å¼
+  // äÖÈ¾¿Õ¸ñµ¥´ÊµÄ¸ñ×ÓÑùÊ½
   const getCellStyle = (isFocused: boolean, hasAnswer: boolean, isCompleted: boolean, isCorrect: boolean) => {
     const bg = isCompleted
       ? (isCorrect ? 'linear-gradient(to bottom, #ecfdf5, #d1fae5)' : 'linear-gradient(to bottom, #fff1f2, #ffe4e6)')
@@ -402,7 +438,15 @@ export default function Home() {
     return { bg, border, color, shadow, transform }
   }
 
-  // æ¸²æŸ“å¡«ç©ºå•è¯ â€”â€” æ¯ä¸ªç©ºç™½ä½ç½®æ˜¯ä¸€ä¸ªçœŸæ­£çš„ <input>
+  /**
+   * ¡¾ĞŞ¸´ºËĞÄ¡¿äÖÈ¾¿Õ¸ñµ¥´Ê ¡ª¡ª ´¿ÊÜ¿Ø input
+   *
+   * ĞŞ¸Äµã£º
+   *   1. È¥µô defaultValue=""
+   *   2. value Ê¼ÖÕ°ó¶¨ blankPos.userAnswer£¨À´×Ô state£©
+   *   3. ÓÃ onChange Ìæ´ú onInput
+   *   4. ²»ÔÙÖ±½Ó²Ù×÷ input.value
+   */
   const renderBlankedWord = (practice: PracticeWord) => {
     const { word, blankPositions, isCompleted } = practice
     const letters = word.english.split('')
@@ -418,9 +462,7 @@ export default function Home() {
             const isAnswerCorrect = blankPos.userAnswer.toLowerCase() === blankPos.char.toLowerCase()
             const isFocused = bi === focusedBlankIndex && !isCompleted && !showAnswer
             const cs = getCellStyle(isFocused, !!blankPos.userAnswer, isCompleted, isAnswerCorrect)
-
-            // æ˜¾ç¤ºç”¨çš„å€¼ï¼šå®Œæˆåç”¨ stateï¼Œå¦åˆ™ input è‡ªå·±æ˜¾ç¤º
-            const displayValue = isCompleted ? blankPos.userAnswer : undefined
+            const isReadOnly = isCompleted || showAnswer
 
             return (
               <div key={`b-${currentWordIndex}-${bi}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -428,19 +470,19 @@ export default function Home() {
                   ref={(el) => { blankInputRefs.current[bi] = el }}
                   type="text"
                   maxLength={1}
-                  defaultValue=""
                   inputMode="text"
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
                   autoComplete="off"
-                  readOnly={isCompleted || showAnswer}
-                  onInput={handleBlankInput(bi, totalBlanks)}
+                  readOnly={isReadOnly}
+                  onChange={handleBlankChange(bi, totalBlanks)}
                   onKeyDown={handleBlankKeyDown(bi, totalBlanks)}
                   onFocus={handleBlankFocus(bi)}
                   onCompositionStart={handleCompositionStart}
-                  onCompositionEnd={handleCompositionEnd(bi)}
-                  value={displayValue}
+                  onCompositionEnd={handleCompositionEnd(bi, totalBlanks)}
+                  // ¡¾ĞŞ¸´¡¿Ê¼ÖÕÊ¹ÓÃ value ÊÜ¿Ø£¬ÖµÀ´×Ô state£¬²»ÔÙÓÃ defaultValue
+                  value={blankPos.userAnswer}
                   style={{
                     width: '40px',
                     height: '52px',
@@ -451,7 +493,7 @@ export default function Home() {
                     borderRadius: '12px',
                     border: `2px solid ${cs.border}`,
                     outline: 'none',
-                    cursor: isCompleted ? 'default' : 'text',
+                    cursor: isReadOnly ? 'default' : 'text',
                     userSelect: 'none',
                     transition: 'all 0.2s',
                     background: cs.bg,
@@ -460,7 +502,7 @@ export default function Home() {
                     transform: cs.transform,
                     caretColor: 'transparent',
                     padding: '0',
-                    // é˜²æ­¢ iOS ç¼©æ”¾
+                    // ·ÀÖ¹ iOS Ëõ·Å
                     WebkitAppearance: 'none' as any,
                     appearance: 'none' as any,
                   }}
@@ -486,26 +528,26 @@ export default function Home() {
   const getAccuracy = () => totalCount === 0 ? 0 : Math.round((correctCount / totalCount) * 100)
   const getEncouragement = () => {
     const a = getAccuracy()
-    if (a === 100) return { text: 'å¤ªæ£’äº†ï¼æ»¡åˆ†ï¼', emoji: 'ğŸ†' }
-    if (a >= 80) return { text: 'éå¸¸ä¼˜ç§€ï¼', emoji: 'ğŸŒŸ' }
-    if (a >= 60) return { text: 'ç»§ç»­åŠ æ²¹ï¼', emoji: 'ğŸ’ª' }
-    return { text: 'å†æ¥å†å‰ï¼', emoji: 'ğŸ¯' }
+    if (a === 100) return { text: 'Ì«°ôÁË£¡Âú·Ö£¡', emoji: '??' }
+    if (a >= 80) return { text: '·Ç³£ÓÅĞã£¡', emoji: '??' }
+    if (a >= 60) return { text: '¼ÌĞø¼ÓÓÍ£¡', emoji: '??' }
+    return { text: 'ÔÙ½ÓÔÙÀ÷£¡', emoji: '??' }
   }
 
-  // ========== ç¼–è¾‘å¼¹çª— ==========
+  // ========== ±à¼­´°¿Ú ==========
   if (editingWord) {
     return (
       <div style={{ minHeight: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
         <div style={{ width: '100%', maxWidth: '400px', background: 'white', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden' }}>
           <div style={{ height: '4px', background: 'linear-gradient(to right, #f59e0b, #f97316)' }} />
           <div style={{ padding: '24px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>âœï¸ ç¼–è¾‘å•è¯</h2>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>?? ±à¼­µ¥´Ê</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div><label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>è‹±æ–‡å•è¯</label><input type="text" value={editEnglish} onChange={(e) => setEditEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
-              <div><label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>ä¸­æ–‡é‡Šä¹‰</label><input type="text" value={editChinese} onChange={(e) => setEditChinese(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
+              <div><label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>Ó¢ÎÄµ¥´Ê</label><input type="text" value={editEnglish} onChange={(e) => setEditEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
+              <div><label style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px', display: 'block' }}>ÖĞÎÄÊÍÒå</label><input type="text" value={editChinese} onChange={(e) => setEditChinese(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '16px', boxSizing: 'border-box' }} /></div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button onClick={cancelEdit} style={{ flex: 1, height: '48px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>å–æ¶ˆ</button>
-                <button onClick={saveEdit} style={{ flex: 1, height: '48px', background: 'linear-gradient(to right, #f59e0b, #f97316)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>ä¿å­˜</button>
+                <button onClick={cancelEdit} style={{ flex: 1, height: '48px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>È¡Ïû</button>
+                <button onClick={saveEdit} style={{ flex: 1, height: '48px', background: 'linear-gradient(to right, #f59e0b, #f97316)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>±£´æ</button>
               </div>
             </div>
           </div>
@@ -514,7 +556,7 @@ export default function Home() {
     )
   }
 
-  // ========== æˆç»©é¡µ ==========
+  // ========== ³É¼¨Ò³ ==========
   if (showResult) {
     const enc = getEncouragement(); const acc = getAccuracy()
     return (
@@ -526,16 +568,16 @@ export default function Home() {
             <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: acc >= 80 ? '#10b981' : acc >= 60 ? '#3b82f6' : '#f97316' }}>{enc.text}</h2>
             <div style={{ background: 'linear-gradient(to bottom right, #f8fafc, #f1f5f9)', borderRadius: '16px', padding: '24px', margin: '24px 0' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-                <div style={{ textAlign: 'center' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#8b5cf6' }}>{totalCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>æ€»é¢˜æ•°</div></div>
-                <div style={{ textAlign: 'center', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10b981' }}>{correctCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>æ­£ç¡®</div></div>
-                <div style={{ textAlign: 'center' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#f43f5e' }}>{totalCount - correctCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>é”™è¯¯</div></div>
+                <div style={{ textAlign: 'center' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#8b5cf6' }}>{totalCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>×ÜÌâÊı</div></div>
+                <div style={{ textAlign: 'center', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10b981' }}>{correctCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>ÕıÈ·</div></div>
+                <div style={{ textAlign: 'center' }}><div style={{ fontSize: '32px', fontWeight: 'bold', color: '#f43f5e' }}>{totalCount - correctCount}</div><div style={{ fontSize: '12px', color: '#64748b' }}>´íÎó</div></div>
               </div>
-              <div style={{ marginTop: '20px' }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px' }}><span>æ­£ç¡®ç‡</span><span style={{ fontWeight: 'bold', color: '#8b5cf6' }}>{acc}%</span></div><div style={{ height: '12px', background: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}><div style={{ height: '100%', width: `${acc}%`, background: 'linear-gradient(to right, #8b5cf6, #a855f7)', borderRadius: '9999px' }} /></div></div>
+              <div style={{ marginTop: '20px' }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px' }}><span>ÕıÈ·ÂÊ</span><span style={{ fontWeight: 'bold', color: '#8b5cf6' }}>{acc}%</span></div><div style={{ height: '12px', background: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}><div style={{ height: '100%', width: `${acc}%`, background: 'linear-gradient(to right, #8b5cf6, #a855f7)', borderRadius: '9999px' }} /></div></div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px' }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: '32px', color: s <= Math.ceil(acc / 20) ? '#fbbf24' : '#e2e8f0' }}>â˜…</span>)}</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px' }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: '32px', color: s <= Math.ceil(acc / 20) ? '#fbbf24' : '#e2e8f0' }}>?</span>)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button onClick={startPractice} style={{ width: '100%', height: '52px', fontSize: '16px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>ğŸ”„ å†æ¥ä¸€è½®</button>
-              <button onClick={exitPractice} style={{ width: '100%', height: '52px', fontSize: '16px', background: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>è¿”å›ä¸»é¡µ</button>
+              <button onClick={startPractice} style={{ width: '100%', height: '52px', fontSize: '16px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>?? ÔÙÀ´Ò»ÂÖ</button>
+              <button onClick={exitPractice} style={{ width: '100%', height: '52px', fontSize: '16px', background: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>·µ»ØÖ÷Ò³</button>
             </div>
           </div>
         </div>
@@ -543,17 +585,17 @@ export default function Home() {
     )
   }
 
-  // ========== ç»ƒä¹ æ¨¡å¼ ==========
+  // ========== Á·Ï°Ä£Ê½ ==========
   if (isPracticeMode && practiceWords.length > 0) {
     const cp = practiceWords[currentWordIndex]
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #e0f2fe, #f5f3ff, #f3e8ff)', display: 'flex', flexDirection: 'column' }}>
         <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
           <div style={{ maxWidth: '400px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <button onClick={exitPractice} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '14px', cursor: 'pointer' }}>âœ• é€€å‡º</button>
+            <button onClick={exitPractice} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '14px', cursor: 'pointer' }}>¡û ÍË³ö</button>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>ğŸ¯ {currentWordIndex + 1} / {totalCount}</span>
-              <span style={{ background: '#d1fae5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>âœ“ {correctCount}</span>
+              <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>?? {currentWordIndex + 1} / {totalCount}</span>
+              <span style={{ background: '#d1fae5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>? {correctCount}</span>
             </div>
           </div>
         </header>
@@ -562,73 +604,73 @@ export default function Home() {
           <div style={{ flex: 1, background: 'white', borderRadius: '20px', boxShadow: '0 20px 40px -12px rgba(0, 0, 0, 0.2)', overflow: 'hidden' }}>
             <div style={{ height: '4px', background: 'linear-gradient(to right, #34d399, #2dd4bf, #22d3ee)' }} />
             <div style={{ textAlign: 'center', padding: '20px', background: 'linear-gradient(to bottom, #f8fafc, white)' }}>
-              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>âœï¸ è¯·å¡«å†™ç¼ºå¤±çš„å­—æ¯</p>
+              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>?? ÇëÌîĞ´È±ÉÙµÄ×ÖÄ¸</p>
               <h2 style={{ fontSize: '32px', fontWeight: 'bold', color: '#7c3aed' }}>{cp.word.chinese}</h2>
             </div>
             <div style={{ padding: '16px' }}>
               {renderBlankedWord(cp)}
               {showAnswer && (
                 <div style={{ textAlign: 'center', padding: '16px', borderRadius: '16px', marginBottom: '16px', background: cp.isCorrect ? '#d1fae5' : '#ffe4e6', border: `2px solid ${cp.isCorrect ? '#34d399' : '#fb7185'}` }}>
-                  {cp.isCorrect ? <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#047857' }}>âœ“ æ­£ç¡®ï¼ğŸ†</span> : <div><span style={{ fontWeight: 'bold', color: '#be123c' }}>âœ• å†æ¥å†å‰ï¼</span><div style={{ marginTop: '8px', fontSize: '14px' }}>æ­£ç¡®ç­”æ¡ˆï¼š<strong>{cp.word.english}</strong></div></div>}
+                  {cp.isCorrect ? <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#047857' }}>? ÕıÈ·£¡Ì«°ôÁË£¡</span> : <div><span style={{ fontWeight: 'bold', color: '#be123c' }}>? ÔÙ½ÓÔÙÀ÷£¡</span><div style={{ marginTop: '8px', fontSize: '14px' }}>ÕıÈ·´ğ°¸£º<strong>{cp.word.english}</strong></div></div>}
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {!showAnswer ? (
                   <>
-                    <button onClick={checkAnswer} style={{ width: '100%', height: '56px', fontSize: '16px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>âœ“ ç¡®è®¤ç­”æ¡ˆ</button>
-                    <button onClick={retryCurrentWord} style={{ width: '100%', height: '48px', fontSize: '14px', background: 'white', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: '12px', cursor: 'pointer' }}>ğŸ”„ æ¢ä¸€ç§å¡«ç©º</button>
+                    <button onClick={checkAnswer} style={{ width: '100%', height: '56px', fontSize: '16px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>? È·ÈÏ´ğ°¸</button>
+                    <button onClick={retryCurrentWord} style={{ width: '100%', height: '48px', fontSize: '14px', background: 'white', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: '12px', cursor: 'pointer' }}>?? »»Ò»ÖÖÌî¿Õ</button>
                   </>
                 ) : (
-                  <button onClick={nextWord} style={{ width: '100%', height: '56px', fontSize: '16px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{currentWordIndex < practiceWords.length - 1 ? 'âš¡ ä¸‹ä¸€ä¸ªå•è¯' : 'ğŸ… æŸ¥çœ‹æˆç»©'}</button>
+                  <button onClick={nextWord} style={{ width: '100%', height: '56px', fontSize: '16px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{currentWordIndex < practiceWords.length - 1 ? '? ÏÂÒ»¸öµ¥´Ê' : '?? ²é¿´³É¼¨'}</button>
                 )}
               </div>
             </div>
           </div>
         </main>
-        <div style={{ maxWidth: '400px', margin: '0 auto', padding: '0 16px 20px', width: '100%', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>âŒ¨ï¸ ç‚¹å‡»æ ¼å­ Â· è¾“å…¥å­—æ¯ Â· è‡ªåŠ¨è·³æ ¼ Â· é€€æ ¼åˆ é™¤</div>
+        <div style={{ maxWidth: '400px', margin: '0 auto', padding: '0 16px 20px', width: '100%', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>?? µã»÷¸ñ×Ó ¡¤ ÊäÈë×ÖÄ¸ ¡¤ ×Ô¶¯Ìø¸ñ ¡¤ ÍË¸ñÉ¾³ı</div>
       </div>
     )
   }
 
-  // ========== ä¸»é¡µ ==========
+  // ========== Ö÷Ò³ ==========
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #f8fafc, #f5f3ff, #faf5ff)' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #ede9fe' }}>
         <div style={{ maxWidth: '400px', margin: '0 auto', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(to bottom right, #8b5cf6, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>ğŸ“–</div>
-            <h1 style={{ fontSize: '20px', fontWeight: 'bold', color: '#7c3aed' }}>å•è¯å¬å†™</h1>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(to bottom right, #8b5cf6, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>??</div>
+            <h1 style={{ fontSize: '20px', fontWeight: 'bold', color: '#7c3aed' }}>µ¥´ÊÆ´Ğ´</h1>
           </div>
-          <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>å…± {words.length} è¯</span>
+          <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>¹² {words.length} ´Ê</span>
         </div>
       </header>
       <main style={{ maxWidth: '400px', margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {practiceHistory.length > 0 && (
           <div style={{ background: 'linear-gradient(to right, #fffbeb, #fef3c7)', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '20px' }}>ğŸ†</span><span style={{ fontWeight: '600', color: '#92400e' }}>ä¸Šæ¬¡æˆç»©</span></div>
-            <div style={{ textAlign: 'right' }}><div style={{ fontSize: '18px', fontWeight: 'bold', color: '#b45309' }}>{practiceHistory[0].correct} / {practiceHistory[0].total}</div><div style={{ fontSize: '12px', color: '#a16207' }}>æ­£ç¡®ç‡ {Math.round((practiceHistory[0].correct / practiceHistory[0].total) * 100)}%</div></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '20px' }}>??</span><span style={{ fontWeight: '600', color: '#92400e' }}>ÉÏ´Î³É¼¨</span></div>
+            <div style={{ textAlign: 'right' }}><div style={{ fontSize: '18px', fontWeight: 'bold', color: '#b45309' }}>{practiceHistory[0].correct} / {practiceHistory[0].total}</div><div style={{ fontSize: '12px', color: '#a16207' }}>ÕıÈ·ÂÊ {Math.round((practiceHistory[0].correct / practiceHistory[0].total) * 100)}%</div></div>
           </div>
         )}
         <div style={{ background: 'white', borderRadius: '20px', boxShadow: '0 20px 40px -12px rgba(0, 0, 0, 0.2)', overflow: 'hidden' }}>
           <div style={{ height: '4px', background: 'linear-gradient(to right, #8b5cf6, #a855f7, #d946ef)' }} />
           <div style={{ padding: '32px', textAlign: 'center' }}>
-            <div style={{ width: '80px', height: '80px', margin: '0 auto 20px', borderRadius: '20px', background: 'linear-gradient(to bottom right, #8b5cf6, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', boxShadow: '0 15px 30px -5px rgba(139, 92, 246, 0.4)' }}>âœï¸</div>
-            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>å‡†å¤‡å¥½äº†å—ï¼Ÿ</h2>
-            <p style={{ color: '#64748b', marginBottom: '20px' }}>éšæœºæŠ½å–å•è¯è¿›è¡Œå¬å†™ç»ƒä¹ </p>
-            <button onClick={startPractice} disabled={words.length === 0} style={{ width: '100%', height: '56px', fontSize: '16px', background: words.length === 0 ? '#e2e8f0' : 'linear-gradient(to right, #8b5cf6, #a855f7, #d946ef)', color: words.length === 0 ? '#94a3b8' : 'white', border: 'none', borderRadius: '12px', cursor: words.length === 0 ? 'not-allowed' : 'pointer', fontWeight: '600' }}>âœ¨ å¼€å§‹å¬å†™</button>
+            <div style={{ width: '80px', height: '80px', margin: '0 auto 20px', borderRadius: '20px', background: 'linear-gradient(to bottom right, #8b5cf6, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', boxShadow: '0 15px 30px -5px rgba(139, 92, 246, 0.4)' }}>??</div>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>×¼±¸ºÃÁËÂğ£¿</h2>
+            <p style={{ color: '#64748b', marginBottom: '20px' }}>Ëæ»ú³éÈ¡µ¥´Ê½øĞĞÆ´Ğ´Á·Ï°</p>
+            <button onClick={startPractice} disabled={words.length === 0} style={{ width: '100%', height: '56px', fontSize: '16px', background: words.length === 0 ? '#e2e8f0' : 'linear-gradient(to right, #8b5cf6, #a855f7, #d946ef)', color: words.length === 0 ? '#94a3b8' : 'white', border: 'none', borderRadius: '12px', cursor: words.length === 0 ? 'not-allowed' : 'pointer', fontWeight: '600' }}>? ¿ªÊ¼Á·Ï°</button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '4px', background: '#f3e8ff', padding: '4px', borderRadius: '12px' }}>
-          <button onClick={() => setActiveTab('list')} style={{ flex: 1, padding: '12px', background: activeTab === 'list' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'list' ? '#7c3aed' : '#64748b' }}>ğŸ“‹ å•è¯åˆ—è¡¨</button>
-          <button onClick={() => setActiveTab('add')} style={{ flex: 1, padding: '12px', background: activeTab === 'add' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'add' ? '#7c3aed' : '#64748b' }}>â• æ·»åŠ å•è¯</button>
+          <button onClick={() => setActiveTab('list')} style={{ flex: 1, padding: '12px', background: activeTab === 'list' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'list' ? '#7c3aed' : '#64748b' }}>?? µ¥´ÊÁĞ±í</button>
+          <button onClick={() => setActiveTab('add')} style={{ flex: 1, padding: '12px', background: activeTab === 'add' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: activeTab === 'add' ? '#7c3aed' : '#64748b' }}>? Ìí¼Óµ¥´Ê</button>
         </div>
         {activeTab === 'list' && (
           <div>
-            {isLoading ? <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>åŠ è½½ä¸­...</div> : words.length === 0 ? (
+            {isLoading ? <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>¼ÓÔØÖĞ...</div> : words.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '48px', background: 'white', borderRadius: '12px', border: '2px dashed #c4b5fd' }}>
-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>ğŸ“–</div>
-                <p style={{ fontWeight: '600' }}>æš‚æ— å•è¯</p>
-                <p style={{ fontSize: '14px', color: '#94a3b8' }}>ç‚¹å‡»ã€Œæ·»åŠ å•è¯ã€å¼€å§‹æ·»åŠ </p>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>??</div>
+                <p style={{ fontWeight: '600' }}>ÔİÎŞµ¥´Ê</p>
+                <p style={{ fontSize: '14px', color: '#94a3b8' }}>µã»÷¡¸Ìí¼Óµ¥´Ê¡¹¿ªÊ¼Ìí¼Ó</p>
               </div>
             ) : (
               <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -639,8 +681,8 @@ export default function Home() {
                       <div style={{ color: '#64748b', fontSize: '14px' }}>{word.chinese}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => startEdit(word)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>âœï¸</button>
-                      <button onClick={() => handleDeleteWord(word.id)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>ğŸ—‘ï¸</button>
+                      <button onClick={() => startEdit(word)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>??</button>
+                      <button onClick={() => handleDeleteWord(word.id)} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '4px' }}>???</button>
                     </div>
                   </div>
                 ))}
@@ -651,18 +693,18 @@ export default function Home() {
         {activeTab === 'add' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', gap: '4px', background: '#f0fdf4', padding: '4px', borderRadius: '12px' }}>
-              <button onClick={() => setAddMode('single')} style={{ flex: 1, padding: '10px', background: addMode === 'single' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'single' ? '#059669' : '#64748b', boxShadow: addMode === 'single' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>å•ä¸ªæ·»åŠ </button>
-              <button onClick={() => setAddMode('batch')} style={{ flex: 1, padding: '10px', background: addMode === 'batch' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'batch' ? '#059669' : '#64748b', boxShadow: addMode === 'batch' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>æ‰¹é‡æ·»åŠ </button>
+              <button onClick={() => setAddMode('single')} style={{ flex: 1, padding: '10px', background: addMode === 'single' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'single' ? '#059669' : '#64748b', boxShadow: addMode === 'single' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>µ¥¸öÌí¼Ó</button>
+              <button onClick={() => setAddMode('batch')} style={{ flex: 1, padding: '10px', background: addMode === 'batch' ? 'white' : 'transparent', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', color: addMode === 'batch' ? '#059669' : '#64748b', boxShadow: addMode === 'batch' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>ÅúÁ¿Ìí¼Ó</button>
             </div>
             {addMode === 'single' ? (
               <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                 <div style={{ height: '4px', background: 'linear-gradient(to right, #34d399, #2dd4bf)' }} />
                 <div style={{ padding: '16px' }}>
-                  <h3 style={{ fontWeight: '600', marginBottom: '12px' }}>â• æ‰‹åŠ¨æ·»åŠ </h3>
+                  <h3 style={{ fontWeight: '600', marginBottom: '12px' }}>? ÊÖ¶¯Ìí¼Ó</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <input ref={addInputRef} type="text" placeholder="è‹±æ–‡å•è¯ï¼Œä¾‹å¦‚ï¼šapple" value={newEnglish} onChange={(e) => setNewEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="ä¸­æ–‡é‡Šä¹‰ï¼Œä¾‹å¦‚ï¼šè‹¹æœ" value={newChinese} onChange={(e) => setNewChinese(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddWord()} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
-                    <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{isAdding ? 'æ·»åŠ ä¸­...' : 'â• æ·»åŠ å•è¯'}</button>
+                    <input ref={addInputRef} type="text" placeholder="Ó¢ÎÄµ¥´Ê£¬ÀıÈç£ºapple" value={newEnglish} onChange={(e) => setNewEnglish(e.target.value)} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="ÖĞÎÄÊÍÒå£¬ÀıÈç£ºÆ»¹û" value={newChinese} onChange={(e) => setNewChinese(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddWord()} style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '16px', boxSizing: 'border-box' }} />
+                    <button onClick={handleAddWord} disabled={isAdding} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #10b981, #2dd4bf)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>{isAdding ? 'Ìí¼ÓÖĞ...' : '? Ìí¼Óµ¥´Ê'}</button>
                   </div>
                 </div>
               </div>
@@ -670,21 +712,21 @@ export default function Home() {
               <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                 <div style={{ height: '4px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)' }} />
                 <div style={{ padding: '16px' }}>
-                  <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>ğŸ“ æ‰¹é‡æ·»åŠ </h3>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>æ¯è¡Œä¸€ä¸ªå•è¯ï¼Œæ ¼å¼ï¼šè‹±æ–‡ ä¸­æ–‡</p>
-                  <textarea ref={batchInputRef} placeholder={"apple è‹¹æœ\nbanana é¦™è•‰\norange æ©™å­"} value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', height: '150px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
-                  <button onClick={handleBatchAdd} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', marginTop: '12px' }}>ğŸ“¥ æ‰¹é‡æ·»åŠ </button>
+                  <h3 style={{ fontWeight: '600', marginBottom: '4px' }}>?? ÅúÁ¿Ìí¼Ó</h3>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>Ã¿ĞĞÒ»¸öµ¥´Ê£¬¸ñÊ½£ºÓ¢ÎÄ ÖĞÎÄ</p>
+                  <textarea ref={batchInputRef} placeholder={"apple Æ»¹û\nbanana Ïã½¶\norange ³È×Ó"} value={batchText} onChange={(e) => setBatchText(e.target.value)} style={{ width: '100%', height: '150px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
+                  <button onClick={handleBatchAdd} style={{ width: '100%', height: '48px', background: 'linear-gradient(to right, #8b5cf6, #a855f7)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', marginTop: '12px' }}>?? ÅúÁ¿Ìí¼Ó</button>
                 </div>
               </div>
             )}
             <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '12px', fontSize: '13px', color: '#166534' }}>
-              <strong>æ ¼å¼è¯´æ˜ï¼š</strong><br/>æ¯è¡Œä¸€ä¸ªå•è¯ï¼Œè‹±æ–‡å’Œä¸­æ–‡ç”¨ç©ºæ ¼ã€é€—å·æˆ–å†’å·åˆ†éš”<br/>ä¾‹å¦‚ï¼šapple è‹¹æœ æˆ– apple,è‹¹æœ
+              <strong>¸ñÊ½ËµÃ÷£º</strong><br/>Ã¿ĞĞÒ»¸öµ¥´Ê£¬Ó¢ÎÄºÍÖĞÎÄÓÃ¿Õ¸ñ¡¢¶ººÅ»òÃ°ºÅ·Ö¸ô<br/>ÀıÈç£ºapple Æ»¹û »ò apple,Æ»¹û
             </div>
           </div>
         )}
         {practiceHistory.length > 1 && (
           <div>
-            <h3 style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px', color: '#64748b' }}>ğŸ“Š ç»ƒä¹ è®°å½•</h3>
+            <h3 style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px', color: '#64748b' }}>?? Á·Ï°¼ÇÂ¼</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {practiceHistory.slice(1).map((r, i) => (
                 <div key={i} style={{ background: 'white', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
